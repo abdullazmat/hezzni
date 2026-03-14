@@ -5,10 +5,13 @@ const path = require("path");
 const authMiddleware = require("../middleware/authMiddleware");
 const adminUserController = require("../controllers/adminUserController");
 const authController = require("../controllers/authController");
+const { ensureUploadDir } = require("../config/uploadPaths");
+
+const avatarUploadDir = ensureUploadDir("avatars");
 
 // Configure multer for avatar uploads
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, "uploads/avatars/"),
+  destination: (req, file, cb) => cb(null, avatarUploadDir),
   filename: (req, file, cb) =>
     cb(
       null,
