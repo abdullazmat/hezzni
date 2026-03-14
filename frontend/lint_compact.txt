@@ -1,0 +1,13 @@
+﻿node.exe : The compact formatter is no 
+longer part of core ESLint. Install it 
+manually with `npm install -D 
+eslint-formatter-compact`
+At C:\Program Files\nodejs\npx.ps1:29 char:3
++   & $NODE_EXE $NPX_CLI_JS $args
++   ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: 
+    (The compact for...matter-compact`:Str  
+  ing) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommand 
+   Error
+ 

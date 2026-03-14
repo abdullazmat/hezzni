@@ -1,0 +1,41 @@
+﻿
+C:\ezzni\frontend\src\components\TripDetailsModal.tsx
+  15:9  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\ezzni\frontend\src\pages\CouponsModals.tsx
+  213:107  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  418:46   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  423:34   error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  526:149  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  542:135  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\ezzni\frontend\src\pages\Dashboard.tsx
+  437:96  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\ezzni\frontend\src\pages\DeliveryServices.tsx
+  94:122  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\ezzni\frontend\src\pages\DriverDocumentsModals.tsx
+  335:86  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\ezzni\frontend\src\pages\DriverModals.tsx
+   9:14  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+  10:12  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\ezzni\frontend\src\pages\LiveTrips.tsx
+  23:54  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\ezzni\frontend\src\pages\Login.tsx
+  73:21  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\ezzni\frontend\src\pages\PaymentModals.tsx
+  30:18  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\ezzni\frontend\src\pages\ReviewManagement.tsx
+  547:102  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+C:\ezzni\frontend\src\pages\SupportModals.tsx
+  369:66  error  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+Γ£û 16 problems (16 errors, 0 warnings)
+

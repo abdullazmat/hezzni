@@ -1,0 +1,36 @@
+﻿
+> frontend@0.0.0 build
+> tsc -b && vite build
+
+src/pages/AllServices.tsx(60,10): error TS6133: 'chartServiceId' is declared but its value is never read.
+src/pages/DriverDocumentsModals.tsx(1491,33): error TS2339: Property 'images' does not exist on type '{ name: string; desc: string; status: string; date: string; }'.
+src/pages/DriverModals.tsx(108,7): error TS2353: Object literal may only specify known properties, and 'carRideStatus' does not exist in type '{ serviceTypeId: number; }'.
+src/pages/Drivers.tsx(33,3): error TS6133: 'getAdminDriverDetailApi' is declared but its value is never read.
+src/pages/Drivers.tsx(34,3): error TS6133: 'suspendDriverApi' is declared but its value is never read.
+src/pages/Drivers.tsx(39,3): error TS6133: 'updateDriverPreferencesApi' is declared but its value is never read.
+src/pages/Drivers.tsx(41,8): error TS6133: 'AdminDriverDetail' is declared but its value is never read.
+src/pages/NotificationsModals.tsx(790,24): error TS6133: 'setScheduleDate' is declared but its value is never read.
+src/pages/RentalCompanies.tsx(80,7): error TS6133: 'mockCompanies' is declared but its value is never read.
+src/pages/RentalCompanies.tsx(174,7): error TS6133: 'mockVehicles' is declared but its value is never read.
+src/pages/Reports.tsx(830,21): error TS2322: Type '(value: number | string, name: string) => [string, string]' is not assignable to type 'Formatter<string | number, string> & ((value: string | number, name: string, item: Payload<string | number, string>, index: number, payload: Payload<string | number, string>[]) => ReactNode | [...])'.
+  Type '(value: number | string, name: string) => [string, string]' is not assignable to type 'Formatter<string | number, string>'.
+    Types of parameters 'value' and 'value' are incompatible.
+      Type 'string | number | undefined' is not assignable to type 'string | number'.
+        Type 'undefined' is not assignable to type 'string | number'.
+src/pages/Reports.tsx(907,21): error TS2322: Type '(value: number | string) => [string, "Revenue"]' is not assignable to type 'Formatter<string | number, "Revenue"> & ((value: string | number, name: "Revenue", item: Payload<string | number, "Revenue">, index: number, payload: Payload<...>[]) => ReactNode | [...])'.
+  Type '(value: number | string) => [string, "Revenue"]' is not assignable to type 'Formatter<string | number, "Revenue">'.
+    Types of parameters 'value' and 'value' are incompatible.
+      Type 'string | number | undefined' is not assignable to type 'string | number'.
+        Type 'undefined' is not assignable to type 'string | number'.
+src/pages/ReviewManagement.tsx(73,32): error TS2339: Property 'error' does not exist on type 'ApiResponse<{ total: number; visible: number; highRated: number; lowRated: number; }>'.
+src/pages/ReviewManagement.tsx(91,43): error TS2339: Property 'error' does not exist on type 'ApiResponse<{ reviews: any[]; total: number; page: number; limit: number; }>'.
+src/pages/ReviewManagementModals.tsx(349,25): error TS2304: Cannot find name 'idx'.
+src/pages/ReviewManagementModals.tsx(402,32): error TS2339: Property 'name' does not exist on type 'ReviewHistoryItem'.
+src/pages/settings_tabs/DailyBonus.tsx(5,3): error TS6133: 'updateBonusSettingsApi' is declared but its value is never read.
+src/pages/settings_tabs/DailyBonus.tsx(7,3): error TS6133: 'updateBonusPeakHourApi' is declared but its value is never read.
+src/pages/settings_tabs/DailyBonus.tsx(20,10): error TS6133: 'loading' is declared but its value is never read.
+src/pages/settings_tabs/DailyBonus.tsx(27,10): error TS6133: 'bonusSettings' is declared but its value is never read.
+src/pages/settings_tabs/DocumentRequirements.tsx(443,41): error TS7006: Parameter 'type' implicitly has an 'any' type.
+src/pages/settings_tabs/DocumentRequirements.tsx(443,47): error TS7006: Parameter 'i' implicitly has an 'any' type.
+src/pages/settings_tabs/FareStructure.tsx(13,10): error TS6133: 'cities' is declared but its value is never read.
+src/pages/settings_tabs/SurgeControl.tsx(5,3): error TS6133: 'updateSurgeRuleApi' is declared but its value is never read.
