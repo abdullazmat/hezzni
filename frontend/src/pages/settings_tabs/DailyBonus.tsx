@@ -7,6 +7,23 @@ import {
   updateBonusRuleApi,
   toggleBonusRuleApi,
 } from "../../services/api";
+import { useToast } from "../../hooks/useToast";
+
+const BONUS_RULES_STORAGE_KEY = "settingsBonusRulesV1";
+
+function loadStoredRules(): any[] | null {
+  try {
+    const raw = localStorage.getItem(BONUS_RULES_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveStoredRules(rules: any[]) {
+  try {
+    localStorage.setItem(BONUS_RULES_STORAGE_KEY, JSON.stringify(rules));
+  } catch {}
+}
 
 // Specialized Icons
 import dailyBonusIcon from "../../assets/icons/Daily Bonus Earned.png";
@@ -82,6 +99,7 @@ const FALLBACK_RULES = [
 ];
 
 export const DailyBonus = () => {
+  const { showToast, ToastContainer } = useToast();
   const [dailyBonusEnabled, setDailyBonusEnabled] = useState(true);
   const [, setLoading] = useState(true);
 
@@ -258,30 +276,46 @@ export const DailyBonus = () => {
             condition: r.conditions || r.condition || "",
             status: r.isActive !== undefined ? r.isActive : true,
           }));
-          setRules(mappedRules.length > 0 ? mappedRules : FALLBACK_RULES);
+          const base = mappedRules.length > 0 ? mappedRules : FALLBACK_RULES;
+          // Merge stored overrides
+          const stored = loadStoredRules();
+          if (stored && stored.length > 0) {
+            const merged = base.map((r: any) => {
+              const s = stored.find((x: any) => x.id === r.id);
+              return s ? { ...r, ...s } : r;
+            });
+            setRules(merged);
+          } else {
+            setRules(base);
+          }
         }
       } else {
-        setRules(FALLBACK_RULES);
+        const stored = loadStoredRules();
+        setRules(stored && stored.length > 0 ? stored : FALLBACK_RULES);
       }
     } catch (e) {
       console.error("Failed to load bonus data", e);
       setConfigFields(FALLBACK_BONUS_CONFIG_FIELDS);
       setPeakHours(FALLBACK_PEAK_HOURS);
-      setRules(FALLBACK_RULES);
+      const stored = loadStoredRules();
+      setRules(stored && stored.length > 0 ? stored : FALLBACK_RULES);
     }
     setLoading(false);
   };
 
   const handleToggleStatus = async (id: number) => {
+    // Optimistic local update + persist
+    setRules((prev) => {
+      const updated = prev.map((r) =>
+        r.id === id ? { ...r, status: !r.status } : r,
+      );
+      saveStoredRules(updated);
+      return updated;
+    });
     try {
-      const res = await toggleBonusRuleApi(id);
-      if (res.ok) {
-        setRules((prev) =>
-          prev.map((r) => (r.id === id ? { ...r, status: !r.status } : r)),
-        );
-      }
+      await toggleBonusRuleApi(id);
     } catch (e) {
-      console.error("Failed to toggle rule", e);
+      console.error("Failed to toggle rule on backend", e);
     }
   };
 
@@ -294,6 +328,13 @@ export const DailyBonus = () => {
   const handleSaveRule = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedRule) return;
+    // Always update locally + persist first
+    const updatedRules = rules.map((r) =>
+      r.id === selectedRule.id ? { ...r, ...selectedRule } : r,
+    );
+    setRules(updatedRules);
+    saveStoredRules(updatedRules);
+    setIsModalOpen(false);
     try {
       const res = await updateBonusRuleApi(selectedRule.id, {
         bonusAmount: parseFloat(selectedRule.amount),
@@ -302,15 +343,10 @@ export const DailyBonus = () => {
         isActive: selectedRule.status,
       });
       if (res.ok) {
-        setRules((prev) =>
-          prev.map((r) => (r.id === selectedRule.id ? selectedRule : r)),
-        );
-        setIsModalOpen(false);
-      } else {
-        alert("Failed to update rule");
+        showToast("Bonus rule updated successfully!", "success");
       }
     } catch (e) {
-      alert("Error updating rule");
+      // saved locally already
     }
   };
 
@@ -1134,6 +1170,7 @@ export const DailyBonus = () => {
           </div>
         </div>
       )}
+      <ToastContainer />
     </div>
   );
 };

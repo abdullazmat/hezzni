@@ -1,6 +1,23 @@
 import { useState, useEffect } from "react";
 import { MoreVertical, Plane, Globe, Users } from "lucide-react";
 import { extractArrayPayload, getRegionsOverviewApi } from "../../services/api";
+import { useToast } from "../../hooks/useToast";
+
+const SERVICE_REGIONS_STORAGE_KEY = "settingsServiceRegionsV1";
+
+function loadStoredRegions(): any[] | null {
+  try {
+    const raw = localStorage.getItem(SERVICE_REGIONS_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveStoredRegions(regions: any[]) {
+  try {
+    localStorage.setItem(SERVICE_REGIONS_STORAGE_KEY, JSON.stringify(regions));
+  } catch {}
+}
 
 // Vehicle Icons
 import carIcon from "../../assets/icons/car.png";
@@ -103,6 +120,7 @@ function getServiceIcon(serviceName: string) {
 }
 
 export const ServiceRegions = () => {
+  const { showToast, ToastContainer } = useToast();
   const [selectedRegion, setSelectedRegion] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -134,6 +152,11 @@ export const ServiceRegions = () => {
             commission: r.customCommission
               ? "Enabled"
               : r.commission || "Enabled",
+            commissionPercentage:
+              r.commissionPercentage ??
+              r.customCommissionPercentage ??
+              r.regionCommissionPercentage ??
+              30,
             status:
               r.isActive !== undefined
                 ? r.isActive
@@ -142,19 +165,43 @@ export const ServiceRegions = () => {
                 : r.status || "Active",
             services: normalizeRegionServices(r.services),
           }));
-
-          setRegions(mapped.length > 0 ? mapped : FALLBACK_REGIONS);
+          const stored = loadStoredRegions();
+          if (stored && stored.length > 0) {
+            const merged = mapped.map((item: any) => {
+              const found = stored.find(
+                (s: any) => s.id === item.id || s.name === item.name,
+              );
+              return found ? { ...item, ...found } : item;
+            });
+            setRegions(merged.length > 0 ? merged : FALLBACK_REGIONS);
+          } else {
+            setRegions(mapped.length > 0 ? mapped : FALLBACK_REGIONS);
+          }
         } else {
-          setRegions(FALLBACK_REGIONS);
+          const stored = loadStoredRegions();
+          setRegions(stored && stored.length > 0 ? stored : FALLBACK_REGIONS);
         }
       } else {
-        setRegions(FALLBACK_REGIONS);
+        const stored = loadStoredRegions();
+        setRegions(stored && stored.length > 0 ? stored : FALLBACK_REGIONS);
       }
     } catch (e) {
       console.error("Failed to load regions", e);
-      setRegions(FALLBACK_REGIONS);
+      const stored = loadStoredRegions();
+      setRegions(stored && stored.length > 0 ? stored : FALLBACK_REGIONS);
     }
     setLoading(false);
+  };
+
+  const handleSaveRegion = () => {
+    if (!selectedRegion) return;
+    const updated = regions.map((region) =>
+      region.id === selectedRegion.id ? { ...selectedRegion } : region,
+    );
+    setRegions(updated);
+    saveStoredRegions(updated);
+    setIsModalOpen(false);
+    showToast(`${selectedRegion.name} settings saved`, "success");
   };
 
   return (
@@ -624,6 +671,16 @@ export const ServiceRegions = () => {
                         style={{
                           background: service.isActive ? "#38AC57" : "#e2e8f0",
                         }}
+                        onClick={() =>
+                          setSelectedRegion({
+                            ...selectedRegion,
+                            services: selectedRegion.services.map((s: any) =>
+                              s.id === service.id
+                                ? { ...s, isActive: !s.isActive }
+                                : s,
+                            ),
+                          })
+                        }
                       >
                         <div
                           className="knob"
@@ -640,7 +697,14 @@ export const ServiceRegions = () => {
                 <div className="vp-toggle-item" style={{ background: "white" }}>
                   <input
                     type="number"
-                    defaultValue="30"
+                    value={String(selectedRegion.commissionPercentage ?? 30)}
+                    onChange={(e) =>
+                      setSelectedRegion({
+                        ...selectedRegion,
+                        commissionPercentage:
+                          Number.parseFloat(e.target.value || "0") || 0,
+                      })
+                    }
                     style={{
                       width: "100%",
                       border: "none",
@@ -662,16 +726,14 @@ export const ServiceRegions = () => {
               >
                 Cancel
               </button>
-              <button
-                className="vp-modal-btn save"
-                onClick={() => setIsModalOpen(false)}
-              >
+              <button className="vp-modal-btn save" onClick={handleSaveRegion}>
                 Save Settings
               </button>
             </div>
           </div>
         </div>
       )}
+      <ToastContainer />
     </div>
   );
 };

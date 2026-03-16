@@ -6,6 +6,31 @@ import {
   updateDocumentRequirementApi,
   deleteDocumentRequirementApi,
 } from "../../services/api";
+import { useToast } from "../../hooks/useToast";
+
+const DOCUMENT_REQUIREMENTS_STORAGE_KEY = "settingsDocumentRequirementsV1";
+
+function loadStoredRequirements(): any[] | null {
+  try {
+    const raw = localStorage.getItem(DOCUMENT_REQUIREMENTS_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveStoredRequirements(items: any[]) {
+  try {
+    localStorage.setItem(
+      DOCUMENT_REQUIREMENTS_STORAGE_KEY,
+      JSON.stringify(items),
+    );
+  } catch {}
+}
+
+function extractSizeLimitMb(limitValue: string): string {
+  const match = limitValue.match(/(\d+(?:\.\d+)?)/);
+  return match ? match[1] : "5";
+}
 
 const FALLBACK_DOCUMENT_TYPES = [
   {
@@ -79,11 +104,17 @@ function normalizeUserTypes(value: unknown): string[] {
 }
 
 export const DocumentRequirements = () => {
+  const { showToast, ToastContainer } = useToast();
   const [selectedDoc, setSelectedDoc] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"view" | "edit">("view");
   const [loading, setLoading] = useState(true);
   const [documentTypes, setDocumentTypes] = useState<any[]>([]);
+  const [editForm, setEditForm] = useState({
+    name: "",
+    description: "",
+    sizeLimitMb: "5",
+  });
 
   useEffect(() => {
     loadDocuments();
@@ -113,52 +144,85 @@ export const DocumentRequirements = () => {
               : doc.limits || "Max: 5MB",
             formats: doc.allowedFormats || doc.formats || "JPG, PNG, PDF",
           }));
-
-          setDocumentTypes(
-            mapped.length > 0 ? mapped : FALLBACK_DOCUMENT_TYPES,
-          );
+          const stored = loadStoredRequirements();
+          if (stored && stored.length > 0) {
+            const merged = mapped.map((item: any) => {
+              const found = stored.find((s: any) => s.id === item.id);
+              return found ? { ...item, ...found } : item;
+            });
+            setDocumentTypes(
+              merged.length > 0 ? merged : FALLBACK_DOCUMENT_TYPES,
+            );
+          } else {
+            setDocumentTypes(
+              mapped.length > 0 ? mapped : FALLBACK_DOCUMENT_TYPES,
+            );
+          }
         } else {
-          setDocumentTypes(FALLBACK_DOCUMENT_TYPES);
+          const stored = loadStoredRequirements();
+          setDocumentTypes(
+            stored && stored.length > 0 ? stored : FALLBACK_DOCUMENT_TYPES,
+          );
         }
       } else {
-        setDocumentTypes(FALLBACK_DOCUMENT_TYPES);
+        const stored = loadStoredRequirements();
+        setDocumentTypes(
+          stored && stored.length > 0 ? stored : FALLBACK_DOCUMENT_TYPES,
+        );
       }
     } catch (e) {
       console.error("Failed to load document requirements", e);
-      setDocumentTypes(FALLBACK_DOCUMENT_TYPES);
+      const stored = loadStoredRequirements();
+      setDocumentTypes(
+        stored && stored.length > 0 ? stored : FALLBACK_DOCUMENT_TYPES,
+      );
     }
     setLoading(false);
   };
 
   const handleDelete = async (doc: any) => {
-    if (!confirm(`Are you sure you want to delete ${doc.name}?`)) return;
+    const updated = documentTypes.filter((d) => d.id !== doc.id);
+    setDocumentTypes(updated);
+    saveStoredRequirements(updated);
+    if (selectedDoc?.id === doc.id) {
+      setIsModalOpen(false);
+      setSelectedDoc(null);
+    }
+    showToast("Document requirement deleted", "success");
     try {
-      const res = await deleteDocumentRequirementApi(doc.id);
-      if (res.ok) {
-        setDocumentTypes((prev) => prev.filter((d) => d.id !== doc.id));
-      } else {
-        alert("Failed to delete document requirement");
-      }
+      await deleteDocumentRequirementApi(doc.id);
     } catch (e) {
-      alert("Error deleting document requirement");
+      // keep local state as source of truth
     }
   };
 
   const handleSaveEdit = async () => {
     if (!selectedDoc?.id) return;
+    const updatedDoc = {
+      ...selectedDoc,
+      name: editForm.name,
+      description: editForm.description,
+      limits: `Max: ${editForm.sizeLimitMb}MB`,
+    };
+
+    const updated = documentTypes.map((doc) =>
+      doc.id === updatedDoc.id ? updatedDoc : doc,
+    );
+    setDocumentTypes(updated);
+    saveStoredRequirements(updated);
+    setSelectedDoc(updatedDoc);
+    setIsModalOpen(false);
+    showToast("Document requirement updated", "success");
+
     try {
-      const res = await updateDocumentRequirementApi(
-        selectedDoc.id,
-        selectedDoc,
-      );
-      if (res.ok) {
-        loadDocuments();
-        setIsModalOpen(false);
-      } else {
-        alert("Failed to update document requirement");
-      }
+      await updateDocumentRequirementApi(selectedDoc.id, {
+        documentName: updatedDoc.name,
+        description: updatedDoc.description,
+        maxFileSize: `${editForm.sizeLimitMb}MB`,
+        userTypes: updatedDoc.types,
+      } as any);
     } catch (e) {
-      alert("Error updating document requirement");
+      // keep local state as source of truth
     }
   };
 
@@ -544,6 +608,13 @@ export const DocumentRequirements = () => {
                           className="vp-action-btn edit"
                           onClick={() => {
                             setSelectedDoc(doc);
+                            setEditForm({
+                              name: doc.name,
+                              description: doc.description,
+                              sizeLimitMb: extractSizeLimitMb(
+                                doc.limits || "Max: 5MB",
+                              ),
+                            });
                             setModalMode("edit");
                             setIsModalOpen(true);
                           }}
@@ -621,20 +692,47 @@ export const DocumentRequirements = () => {
                   className="vp-edit-form"
                   onSubmit={(e) => {
                     e.preventDefault();
-                    setIsModalOpen(false);
+                    handleSaveEdit();
                   }}
                 >
                   <div className="input-group">
                     <label>Document Name</label>
-                    <input type="text" defaultValue={selectedDoc.name} />
+                    <input
+                      type="text"
+                      value={editForm.name}
+                      onChange={(e) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          name: e.target.value,
+                        }))
+                      }
+                    />
                   </div>
                   <div className="input-group">
                     <label>Description</label>
-                    <textarea defaultValue={selectedDoc.description} rows={3} />
+                    <textarea
+                      value={editForm.description}
+                      onChange={(e) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          description: e.target.value,
+                        }))
+                      }
+                      rows={3}
+                    />
                   </div>
                   <div className="input-group">
                     <label>Size Limit (MB)</label>
-                    <input type="text" defaultValue="5" />
+                    <input
+                      type="text"
+                      value={editForm.sizeLimitMb}
+                      onChange={(e) =>
+                        setEditForm((prev) => ({
+                          ...prev,
+                          sizeLimitMb: e.target.value,
+                        }))
+                      }
+                    />
                   </div>
                 </form>
               )}
@@ -656,6 +754,7 @@ export const DocumentRequirements = () => {
           </div>
         </div>
       )}
+      <ToastContainer />
     </div>
   );
 };

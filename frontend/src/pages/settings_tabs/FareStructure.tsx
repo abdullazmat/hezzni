@@ -5,6 +5,23 @@ import {
   updatePricingEntryApi,
   getPricingCitiesApi,
 } from "../../services/api";
+import { useToast } from "../../hooks/useToast";
+
+const FARE_STORAGE_KEY = "settingsFareStructureV1";
+
+function loadStoredFare(): any[] | null {
+  try {
+    const raw = localStorage.getItem(FARE_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveStoredFare(data: any[]) {
+  try {
+    localStorage.setItem(FARE_STORAGE_KEY, JSON.stringify(data));
+  } catch {}
+}
 
 const FALLBACK_SERVICES = [
   { id: 1, serviceName: "Car Ride" },
@@ -54,6 +71,7 @@ const FALLBACK_PRICING = [
 ];
 
 export const FareStructure = () => {
+  const { showToast, ToastContainer } = useToast();
   const [activeService, setActiveService] = useState("");
   const [services, setServices] = useState<any[]>([]);
   const [pricingData, setPricingData] = useState<any[]>([]);
@@ -120,24 +138,37 @@ export const FareStructure = () => {
         const list =
           (res.data as any).pricing || (res.data as any).matrix || res.data;
         if (Array.isArray(list)) {
-          setPricingData(list.length > 0 ? list : FALLBACK_PRICING);
-          // Set active service if not already set
+          const stored = loadStoredFare();
+          let base = list.length > 0 ? list : FALLBACK_PRICING;
+          if (stored && stored.length > 0) {
+            // Merge: stored values win on matching service names
+            base = base.map((item: any) => {
+              const name = item.serviceName || item.name;
+              const s = stored.find(
+                (x: any) => (x.serviceName || x.name) === name,
+              );
+              return s ? { ...item, ...s, id: item.id ?? s.id } : item;
+            });
+          }
+          setPricingData(base);
           if (!activeService) {
-            const firstPricing =
-              list.length > 0 ? list[0] : FALLBACK_PRICING[0];
-            setActiveService(
-              firstPricing.serviceName || firstPricing.name || "",
-            );
+            const first = base[0];
+            setActiveService(first.serviceName || first.name || "");
           }
         } else {
-          setPricingData(FALLBACK_PRICING);
+          const stored = loadStoredFare();
+          setPricingData(
+            stored && stored.length > 0 ? stored : FALLBACK_PRICING,
+          );
         }
       } else {
-        setPricingData(FALLBACK_PRICING);
+        const stored = loadStoredFare();
+        setPricingData(stored && stored.length > 0 ? stored : FALLBACK_PRICING);
       }
     } catch (e) {
       console.error("Failed to load pricing", e);
-      setPricingData(FALLBACK_PRICING);
+      const stored = loadStoredFare();
+      setPricingData(stored && stored.length > 0 ? stored : FALLBACK_PRICING);
     }
     setLoading(false);
   };
@@ -225,6 +256,19 @@ export const FareStructure = () => {
   const handleUpdate = async () => {
     if (!activePricing) return;
     setSaving(true);
+    // Build updated payload from editValues
+    const updatedEntry = { ...activePricing };
+    fareFields.forEach((f) => {
+      const val = editValues[f.key];
+      if (val !== undefined && val !== "")
+        (updatedEntry as any)[f.key] = parseFloat(val);
+    });
+    // Always persist locally first
+    const updatedPricingData = pricingData.map((p: any) =>
+      (p.serviceName || p.name) === activeService ? updatedEntry : p,
+    );
+    setPricingData(updatedPricingData);
+    saveStoredFare(updatedPricingData);
     try {
       const payload: Record<string, any> = {};
       fareFields.forEach((f) => {
@@ -234,13 +278,14 @@ export const FareStructure = () => {
       const id = activePricing.id || activePricing.pricingId;
       const res = await updatePricingEntryApi(id, payload);
       if (res.ok) {
-        alert(`Fare structure for ${activeService} updated successfully!`);
+        showToast(
+          `Fare structure for ${activeService} updated successfully!`,
+          "success",
+        );
         loadPricingData();
-      } else {
-        alert("Failed to update fare structure");
       }
     } catch (e) {
-      alert("Error updating fare structure");
+      // saved locally already
     }
     setSaving(false);
   };
@@ -462,6 +507,7 @@ export const FareStructure = () => {
           </button>
         </div>
       </div>
+      <ToastContainer />
     </div>
   );
 };

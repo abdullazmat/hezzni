@@ -1580,16 +1580,21 @@ export const ApplicationReviewModal = ({
         {/* Approve / Reject */}
         <div className="adm-footer-actions">
           <button
-            onClick={() => {
+            onClick={async () => {
               const vType = doc.vehicleType || "CAR";
               const dId =
                 doc.driverDbId ||
                 parseInt(doc.driverId.replace(/\D/g, "")) ||
                 0;
-              if (dId)
-                updateDriverApplicationStatusApi(vType, dId, {
-                  status: "APPROVED",
-                }).catch(() => {});
+              if (dId) {
+                try {
+                  await updateDriverApplicationStatusApi(vType, dId, {
+                    status: "APPROVED",
+                  });
+                } catch {
+                  return;
+                }
+              }
               onApprove();
               onClose();
             }}
@@ -1615,16 +1620,21 @@ export const ApplicationReviewModal = ({
             Approve Application
           </button>
           <button
-            onClick={() => {
+            onClick={async () => {
               const vType = doc.vehicleType || "CAR";
               const dId =
                 doc.driverDbId ||
                 parseInt(doc.driverId.replace(/\D/g, "")) ||
                 0;
-              if (dId)
-                updateDriverApplicationStatusApi(vType, dId, {
-                  status: "REJECTED",
-                }).catch(() => {});
+              if (dId) {
+                try {
+                  await updateDriverApplicationStatusApi(vType, dId, {
+                    status: "REJECTED",
+                  });
+                } catch {
+                  return;
+                }
+              }
               onReject();
               onClose();
             }}

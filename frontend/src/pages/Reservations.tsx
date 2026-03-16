@@ -333,6 +333,7 @@ export const Reservations = () => {
     LiveTripsServiceTypeOption[]
   >([]);
   const [loading, setLoading] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Build status mapping for API calls
   const getStatusParam = useCallback(() => {
@@ -434,7 +435,6 @@ export const Reservations = () => {
     getPeriodParam,
   ]);
 
-  // Handle preview click - fetch full detail
   const handlePreview = async (r: Reservation) => {
     try {
       const numericId = String(r.numericId || r.id.replace(/\D/g, ""));
@@ -446,6 +446,72 @@ export const Reservations = () => {
       }
     } catch {
       setSelectedReservation(normalizeReservation(r));
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!selectedReservation) return;
+    setIsDownloading(true);
+
+    try {
+      // Small artificial delay to simulate processing
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      const data = selectedReservation;
+      
+      const headers = [
+        "Reservation ID", "Status", "Service Type", "Vehicle Type", "Date", "Time",
+        "Passenger Name", "Passenger ID", "Passenger Phone", "Passenger Email",
+        "Driver Name", "Driver ID", "Driver Phone", "Driver Email",
+        "Vehicle Model", "Vehicle Plate", "Vehicle Color",
+        "Pickup Address", "Destination Address", "Distance",
+        "Payment Method", "Fare", "TVA", "Service Fee", "Discount", "Currency"
+      ];
+
+      const row = [
+        data.id,
+        data.status,
+        data.serviceType,
+        data.vehicleType,
+        data.scheduleDate,
+        data.scheduleTime,
+        `"${(data.customer.name || "").replace(/"/g, '""')}"`,
+        data.customer.id,
+        data.customer.phone,
+        data.customer.email,
+        `"${(data.driver.name || "").replace(/"/g, '""')}"`,
+        data.driver.id,
+        data.driver.phone,
+        data.driver.email,
+        `"${(data.vehicle?.makeModel || "").replace(/"/g, '""')}"`,
+        data.vehicle?.licencePlate || "",
+        data.vehicle?.colour || "",
+        `"${(data.pickup || "").replace(/"/g, '""')}"`,
+        `"${(data.destination || "").replace(/"/g, '""')}"`,
+        data.distance,
+        data.paymentMethod,
+        data.fare.toFixed(2),
+        data.tva,
+        data.serviceFee.toFixed(2),
+        data.discount,
+        data.currency
+      ];
+
+      const content = [headers.join(","), row.join(",")].join("\n");
+
+      const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `Reservation_${data.id}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Download failed:", error);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -2070,20 +2136,28 @@ export const Reservations = () => {
 
             <div className="res-footer">
               <button
+                onClick={handleDownload}
+                disabled={isDownloading}
                 style={{
                   padding: "1rem 3.5rem",
                   borderRadius: "1.25rem",
-                  backgroundColor: "#38AC57",
+                  backgroundColor: isDownloading ? "#94a3b8" : "#38AC57",
                   color: "white",
                   border: "none",
                   fontWeight: "800",
                   fontSize: "1.1rem",
-                  cursor: "pointer",
-                  boxShadow: "0 10px 15px -3px rgba(56, 172, 87, 0.3)",
+                  cursor: isDownloading ? "not-allowed" : "pointer",
+                  boxShadow: isDownloading
+                    ? "none"
+                    : "0 10px 15px -3px rgba(56, 172, 87, 0.3)",
                   transition: "all 0.2s",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  gap: "0.5rem",
                 }}
               >
-                Download
+                {isDownloading ? "Downloading..." : "Download"}
               </button>
             </div>
           </div>

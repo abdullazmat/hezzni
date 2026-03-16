@@ -56,92 +56,7 @@ const EMPTY_STATS: ArchiveTripsStats = {
   commission: 0,
 };
 
-const FALLBACK_STATS: ArchiveTripsStats = {
-  totalArchived: 74,
-  completed: 58,
-  cancelled: 11,
-  disputed: 5,
-  revenue: 9280.5,
-  commission: 15,
-};
 
-const FALLBACK_TRIPS: ArchiveTripRow[] = [
-  {
-    id: "ARC-4102",
-    service: "Car Ride",
-    rider: {
-      name: "Rania T.",
-      id: "R-820",
-      rating: 4.8,
-      img: null,
-      city: "Casablanca",
-    },
-    driver: {
-      name: "Samir B.",
-      id: "D-301",
-      rating: 4.9,
-      img: null,
-    },
-    vehicle: "Car",
-    time: "10 Mar 2026, 14:20",
-    duration: "24 min",
-    status: "Completed",
-    fare: "168.00",
-    paymentMethod: "visa",
-    archivedAt: "2026-03-10T14:50:00.000Z",
-    archiveReason: "Completed and archived",
-  },
-  {
-    id: "ARC-4103",
-    service: "Taxi",
-    rider: {
-      name: "Imane S.",
-      id: "R-821",
-      rating: 4.5,
-      img: null,
-      city: "Rabat",
-    },
-    driver: {
-      name: "Mouad H.",
-      id: "D-302",
-      rating: 4.6,
-      img: null,
-    },
-    vehicle: "Taxi",
-    time: "11 Mar 2026, 09:10",
-    duration: "13 min",
-    status: "Cancelled",
-    fare: "0.00",
-    paymentMethod: "cash",
-    archivedAt: "2026-03-11T09:35:00.000Z",
-    archiveReason: "Rider cancelled after driver assignment",
-  },
-  {
-    id: "ARC-4104",
-    service: "Motorcycle",
-    rider: {
-      name: "Nora A.",
-      id: "R-822",
-      rating: 4.7,
-      img: null,
-      city: "Marrakech",
-    },
-    driver: {
-      name: "Adil K.",
-      id: "D-303",
-      rating: 4.7,
-      img: null,
-    },
-    vehicle: "Motorcycle",
-    time: "12 Mar 2026, 18:40",
-    duration: "19 min",
-    status: "Disputed",
-    fare: "89.00",
-    paymentMethod: "mastercard",
-    archivedAt: "2026-03-12T19:10:00.000Z",
-    archiveReason: "Fare dispute opened by rider",
-  },
-];
 
 const FALLBACK_CITIES: LiveTripsFilterOption[] = [
   { id: 1, name: "Casablanca" },
@@ -172,6 +87,7 @@ export const ArchiveTrips = () => {
     LiveTripsServiceTypeOption[]
   >([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isDownloading, setIsDownloading] = useState(false);
 
   // Modal State
   const [selectedTripDetail, setSelectedTripDetail] =
@@ -236,24 +152,19 @@ export const ArchiveTrips = () => {
       }
       if (searchTerm.trim()) query.search = searchTerm.trim();
 
+      const statsQuery = { ...query };
+      delete statsQuery.status;
+
       const [statsRes, tripsRes] = await Promise.all([
-        getArchiveStatsApi(query as any),
+        getArchiveStatsApi(statsQuery as any),
         getArchiveTripsApi({ ...query, page: 1, limit: 100 } as any),
       ]);
       if (cancelled) return;
 
       const nextStats = statsRes.ok ? statsRes.data : EMPTY_STATS;
       const nextTrips = tripsRes.ok ? tripsRes.data.trips : [];
-      const shouldUseFallback =
-        nextTrips.length === 0 && isEmptyArchiveStats(nextStats);
-
-      if (shouldUseFallback) {
-        setStats(FALLBACK_STATS);
-        setTrips(FALLBACK_TRIPS);
-      } else {
-        setStats(nextStats);
-        setTrips(nextTrips);
-      }
+      setStats(nextStats);
+      setTrips(nextTrips);
 
       setIsLoading(false);
     };
@@ -269,6 +180,7 @@ export const ArchiveTrips = () => {
     searchTerm,
     cities,
     serviceTypes,
+    activeStat,
   ]);
 
   const getStatusStyle = (status: string) => {
@@ -358,6 +270,68 @@ export const ArchiveTrips = () => {
       setSelectedTripDetail(res.data);
     } else {
       setSelectedTripDetail(buildArchiveDetailFromRow(trip));
+    }
+  };
+
+  const handleDownload = async () => {
+    if (!selectedTripDetail) return;
+    setIsDownloading(true);
+
+    try {
+      // Small artificial delay to simulate processing
+      await new Promise((resolve) => setTimeout(resolve, 800));
+
+      const data = selectedTripDetail;
+      
+      const headers = [
+        "Trip ID", "Status", "Date/Time", "Distance",
+        "Passenger Name", "Passenger ID", "Category", "Passenger Email", "Passenger Phone",
+        "Driver Name", "Driver ID", "Vehicle Type", "Driver Email", "Driver Phone",
+        "Pickup Address", "Destination Address",
+        "Payment Method", "Total Amount", "Service Fee", "Discount",
+        "Archived At", "Archive Reason"
+      ];
+
+      const row = [
+        data.tripInfo.id,
+        data.tripInfo.status,
+        data.tripInfo.startTime,
+        data.tripInfo.distance || "",
+        `"${(data.passenger.fullName || "").replace(/"/g, '""')}"`,
+        data.passenger.customerId,
+        data.passenger.category,
+        data.passenger.email || "",
+        data.passenger.phone || "",
+        `"${(data.driver.fullName || "").replace(/"/g, '""')}"`,
+        data.driver.driverId,
+        data.driver.vehicleType,
+        data.driver.email || "",
+        data.driver.phone || "",
+        `"${(data.route.pickupAddress || "").replace(/"/g, '""')}"`,
+        `"${(data.route.dropoffAddress || "").replace(/"/g, '""')}"`,
+        data.payment?.method || "",
+        data.payment?.totalAmount || "",
+        data.payment?.serviceFee || "",
+        data.payment?.discount || "",
+        data.archiveInfo.archivedAt || "",
+        `"${(data.archiveInfo.reason || "").replace(/"/g, '""')}"`
+      ];
+
+      const content = [headers.join(","), row.join(",")].join("\n");
+
+      const blob = new Blob([content], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `ArchiveTrip_${data.tripInfo.id}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error("Download failed:", error);
+    } finally {
+      setIsDownloading(false);
     }
   };
 
@@ -549,7 +523,19 @@ export const ArchiveTrips = () => {
           return (
             <div
               key={stat.id}
-              onClick={() => setActiveStat(isActive ? null : stat.id)}
+              onClick={() => {
+                const newActive = isActive ? null : stat.id;
+                setActiveStat(newActive);
+                if (stat.id === "completed") {
+                  setStatusFilter(newActive ? "Completed" : "All");
+                } else if (stat.id === "cancelled") {
+                  setStatusFilter(newActive ? "Cancelled" : "All");
+                } else if (stat.id === "disputed") {
+                  setStatusFilter(newActive ? "Disputed" : "All");
+                } else {
+                  setStatusFilter("All");
+                }
+              }}
               style={{
                 padding: "1.5rem",
                 borderRadius: "1.5rem",
@@ -659,8 +645,16 @@ export const ArchiveTrips = () => {
             "Searching",
             "Accepted",
             "In_progress",
+            "Disputed",
           ]}
-          onChange={setStatusFilter}
+          onChange={(val) => {
+            setStatusFilter(val);
+            if (val === "Completed") setActiveStat("completed");
+            else if (val === "Cancelled") setActiveStat("cancelled");
+            else if (val === "Disputed") setActiveStat("disputed");
+            else if (val === "All") setActiveStat("total");
+            else setActiveStat(null);
+          }}
         />
         <Dropdown
           label="Service Type"
@@ -1687,19 +1681,21 @@ export const ArchiveTrips = () => {
             {/* Footer / Download */}
             <div className="at-modal-footer">
               <button
+                onClick={handleDownload}
+                disabled={isDownloading}
                 style={{
-                  backgroundColor: "#38AC57",
+                  backgroundColor: isDownloading ? "#94a3b8" : "#38AC57",
                   color: "white",
                   border: "none",
                   padding: "1rem 3rem",
                   borderRadius: "2rem",
                   fontWeight: "bold",
-                  cursor: "pointer",
+                  cursor: isDownloading ? "not-allowed" : "pointer",
                   fontSize: "0.95rem",
                   width: "100%",
                 }}
               >
-                Download
+                {isDownloading ? "Downloading..." : "Download"}
               </button>
             </div>
           </div>
@@ -1709,16 +1705,6 @@ export const ArchiveTrips = () => {
   );
 };
 
-function isEmptyArchiveStats(stats: ArchiveTripsStats) {
-  return (
-    stats.totalArchived === 0 &&
-    stats.completed === 0 &&
-    stats.cancelled === 0 &&
-    stats.disputed === 0 &&
-    stats.revenue === 0 &&
-    stats.commission === 0
-  );
-}
 
 function buildArchiveDetailFromRow(trip: ArchiveTripRow): ArchiveTripDetail {
   return {

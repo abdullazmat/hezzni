@@ -26,6 +26,9 @@ import visibleIcon from "../assets/icons/Verified Drivers-Passengers.png";
 import highRatedIcon from "../assets/icons/Active Drivers.png";
 import lowRatedIcon from "../assets/icons/active now.png";
 
+const REVIEW_OVERRIDES_STORAGE_KEY = "adminReviewOverridesV1";
+const REVIEW_DELETED_STORAGE_KEY = "adminReviewDeletedIdsV1";
+
 const FALLBACK_REVIEWS: Review[] = [
   {
     id: "REV-1001",
@@ -93,12 +96,71 @@ const FALLBACK_REVIEWS: Review[] = [
   },
 ];
 
-const FALLBACK_STATS = {
-  total: FALLBACK_REVIEWS.length,
-  visible: FALLBACK_REVIEWS.filter((review) => review.visible).length,
-  highRated: FALLBACK_REVIEWS.filter((review) => review.rating >= 4.5).length,
-  lowRated: FALLBACK_REVIEWS.filter((review) => review.rating < 3.0).length,
-};
+type ReviewOverrideMap = Record<
+  string,
+  Pick<Review, "comment" | "isFlagged" | "visible" | "status">
+>;
+
+function loadReviewOverrides(): ReviewOverrideMap {
+  try {
+    const raw = localStorage.getItem(REVIEW_OVERRIDES_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveReviewOverrides(overrides: ReviewOverrideMap) {
+  try {
+    localStorage.setItem(
+      REVIEW_OVERRIDES_STORAGE_KEY,
+      JSON.stringify(overrides),
+    );
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function loadDeletedReviewIds(): string[] {
+  try {
+    const raw = localStorage.getItem(REVIEW_DELETED_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveDeletedReviewIds(ids: string[]) {
+  try {
+    localStorage.setItem(REVIEW_DELETED_STORAGE_KEY, JSON.stringify(ids));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function applyLocalReviewState(list: Review[]): Review[] {
+  const overrides = loadReviewOverrides();
+  const deleted = new Set(loadDeletedReviewIds());
+  return list
+    .filter((review) => !deleted.has(review.id))
+    .map((review) => ({
+      ...review,
+      ...(overrides[review.id] || {}),
+    }));
+}
+
+function computeStatsFromReviews(list: Review[]) {
+  return {
+    total: list.length,
+    visible: list.filter((review) => review.visible).length,
+    highRated: list.filter((review) => review.rating >= 4.5).length,
+    lowRated: list.filter((review) => review.rating < 3.0).length,
+  };
+}
 
 export const ReviewManagement = () => {
   const [reviews, setReviews] = useState<Review[]>([]);
@@ -142,7 +204,7 @@ export const ReviewManagement = () => {
       ]);
 
       const nextStats = statsRes.ok && statsRes.data ? statsRes.data : null;
-      const nextReviews =
+      const fetchedReviews =
         listRes.ok && listRes.data?.reviews
           ? listRes.data.reviews.map((r: any) => ({
               ...r,
@@ -154,28 +216,27 @@ export const ReviewManagement = () => {
           : [];
 
       const shouldUseFallback =
-        nextReviews.length === 0 ||
+        fetchedReviews.length === 0 ||
         !nextStats ||
         (nextStats.total === 0 &&
           nextStats.visible === 0 &&
           nextStats.highRated === 0 &&
           nextStats.lowRated === 0);
 
-      if (shouldUseFallback) {
-        setStats(FALLBACK_STATS);
-        setReviews(FALLBACK_REVIEWS);
-        setTotalReviews(FALLBACK_REVIEWS.length);
-        setFetchError("");
-      } else {
-        setStats(nextStats);
-        setReviews(nextReviews);
-        setTotalReviews(listRes.data.total || nextReviews.length || 0);
-      }
+      const baseReviews = shouldUseFallback ? FALLBACK_REVIEWS : fetchedReviews;
+      const effectiveReviews = applyLocalReviewState(baseReviews);
+      const effectiveStats = computeStatsFromReviews(effectiveReviews);
+
+      setStats(effectiveStats);
+      setReviews(effectiveReviews);
+      setTotalReviews(effectiveReviews.length);
+      setFetchError("");
     } catch (e) {
       console.error("Failed to fetch reviews:", e);
-      setStats(FALLBACK_STATS);
-      setReviews(FALLBACK_REVIEWS);
-      setTotalReviews(FALLBACK_REVIEWS.length);
+      const effectiveReviews = applyLocalReviewState(FALLBACK_REVIEWS);
+      setStats(computeStatsFromReviews(effectiveReviews));
+      setReviews(effectiveReviews);
+      setTotalReviews(effectiveReviews.length);
       setFetchError("");
     } finally {
       setIsLoading(false);
@@ -257,35 +318,59 @@ export const ReviewManagement = () => {
   ]);
 
   const handleUpdateReview = async (updated: Review) => {
-    if (!selectedReview) {
-      return;
-    }
+    const previous = reviews.find((review) => review.id === updated.id) || null;
+
+    const nextReviews = reviews.map((r) => (r.id === updated.id ? updated : r));
+    setReviews(nextReviews);
+    setStats(computeStatsFromReviews(nextReviews));
+    setTotalReviews(nextReviews.length);
+    setSelectedReview((prev) =>
+      prev && prev.id === updated.id ? updated : prev,
+    );
+
+    const overrides = loadReviewOverrides();
+    overrides[updated.id] = {
+      comment: updated.comment,
+      isFlagged: updated.isFlagged,
+      visible: updated.visible,
+      status: updated.status,
+    };
+    saveReviewOverrides(overrides);
 
     try {
-      if (updated.comment !== selectedReview.comment) {
+      if (previous && updated.comment !== previous.comment) {
         await editAdminReviewApi(updated.id, { comment: updated.comment });
       }
 
-      if (updated.isFlagged !== selectedReview.isFlagged) {
+      if (previous && updated.isFlagged !== previous.isFlagged) {
         await toggleReviewFlagApi(updated.id);
       }
-
-      setSelectedReview(updated);
-      await fetchData();
     } catch (error) {
-      console.error("Failed to update review:", error);
+      console.error("Failed to sync review update:", error);
     }
   };
 
   const handleDeleteReview = async (id: string) => {
+    const nextReviews = reviews.filter((r) => r.id !== id);
+    setReviews(nextReviews);
+    setStats(computeStatsFromReviews(nextReviews));
+    setTotalReviews(nextReviews.length);
+    setSelectedReview(null);
+    setIsModalOpen(false);
+
+    const deletedIds = Array.from(new Set([...loadDeletedReviewIds(), id]));
+    saveDeletedReviewIds(deletedIds);
+
+    const overrides = loadReviewOverrides();
+    if (overrides[id]) {
+      delete overrides[id];
+      saveReviewOverrides(overrides);
+    }
+
     try {
       await deleteAdminReviewApi(id);
-      setReviews((prev) => prev.filter((r) => r.id !== id));
-      setSelectedReview(null);
-      setIsModalOpen(false);
-      await fetchData();
     } catch (error) {
-      console.error("Failed to delete review:", error);
+      console.error("Failed to sync review deletion:", error);
     }
   };
 

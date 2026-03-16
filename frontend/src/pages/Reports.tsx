@@ -64,6 +64,7 @@ export const Reports = () => {
   const [regionFilter, setRegionFilter] = useState("");
   const [serviceFilter, setServiceFilter] = useState("");
   const [timeFilter, setTimeFilter] = useState("This Month");
+  const [regionalTableFilter, setRegionalTableFilter] = useState("All Regions");
   const [activeTab, setActiveTab] = useState<"drivers" | "riders">("drivers");
   const [activeStat, setActiveStat] = useState<string>("Total Earning");
   const [filterOptions, setFilterOptions] = useState<ReportFilterOptions>({
@@ -1328,6 +1329,8 @@ export const Reports = () => {
               </span>
               <select
                 className="filter-select"
+                value={regionalTableFilter}
+                onChange={(e) => setRegionalTableFilter(e.target.value)}
                 style={{
                   border: "none",
                   background: "transparent",
@@ -1338,9 +1341,11 @@ export const Reports = () => {
                   outline: "none",
                 }}
               >
-                <option>All Regions</option>
-                {regionalData.map((r) => (
-                  <option key={r.name}>{r.name}</option>
+                <option value="All Regions">All Regions</option>
+                {regionalSummary.map((r) => (
+                  <option key={r.region} value={r.region}>
+                    {r.region}
+                  </option>
                 ))}
               </select>
             </div>
@@ -1359,7 +1364,12 @@ export const Reports = () => {
                 </tr>
               </thead>
               <tbody>
-                {regionalSummary.map((row, idx) => (
+                {(regionalTableFilter === "All Regions"
+                  ? regionalSummary
+                  : regionalSummary.filter(
+                      (r) => r.region === regionalTableFilter,
+                    )
+                ).map((row, idx) => (
                   <tr key={idx}>
                     <td>
                       <div

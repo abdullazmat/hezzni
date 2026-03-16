@@ -875,6 +875,8 @@ export const VehicleDetailModal = ({
 export const AddVehicleModal = ({
   onClose,
   onAdd,
+  initialCompany,
+  lockCompany = false,
 }: {
   onClose: () => void;
   onAdd: (
@@ -883,6 +885,8 @@ export const AddVehicleModal = ({
       "id" | "companyLogo" | "submittedDate" | "status"
     >,
   ) => void;
+  initialCompany?: string;
+  lockCompany?: boolean;
 }) => {
   const [formData, setFormData] = useState({
     name: "Mercedes G Wagon",
@@ -891,7 +895,7 @@ export const AddVehicleModal = ({
     transmission: "Automatic",
     fuel: "Petrol",
     color: "Black",
-    company: "New Rental Co",
+    company: initialCompany || "New Rental Co",
     carsAvailable: 1,
     licensePlate: "",
     seats: 5,
@@ -906,6 +910,12 @@ export const AddVehicleModal = ({
     onAdd(formData);
     onClose();
   };
+
+  useEffect(() => {
+    if (initialCompany) {
+      setFormData((prev) => ({ ...prev, company: initialCompany }));
+    }
+  }, [initialCompany]);
 
   return (
     <div className="rcm-modal-overlay" onClick={onClose}>
@@ -1037,12 +1047,14 @@ export const AddVehicleModal = ({
                 onChange={(e) =>
                   setFormData({ ...formData, company: e.target.value })
                 }
+                readOnly={lockCompany}
                 style={{
                   width: "100%",
                   padding: "12px",
                   borderRadius: "12px",
                   border: "1px solid #d1d5db",
                   outline: "none",
+                  backgroundColor: lockCompany ? "#f9fafb" : "white",
                   boxSizing: "border-box",
                 }}
               />

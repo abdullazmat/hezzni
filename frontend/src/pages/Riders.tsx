@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { PageLoader } from "../components/PageLoader";
+import { Toast } from "../components/Toast";
 import { Search, Eye, ChevronDown, ArrowLeft, X } from "lucide-react";
 
 import { UserAvatar } from "../components/UserAvatar";
@@ -9,6 +10,10 @@ import {
   activateRiderApi,
   type AdminRiderStats,
 } from "../services/api";
+import {
+  getRiderStatus,
+  saveRiderStatus,
+} from "../utils/riderStatusPersistence";
 
 // Specialized Icons
 import totalRidersIcon from "../assets/icons/total riders.png";
@@ -22,8 +27,6 @@ import {
   TripSummaryContent,
   EditRiderContent,
   SuspendRiderModal,
-  SuspensionBanner,
-  ActivationBanner,
 } from "./RiderModals";
 
 // --- Types ---
@@ -197,6 +200,18 @@ const Dropdown = ({
 };
 
 export const Riders = () => {
+  const [toast, setToast] = useState<{
+    open: boolean;
+    type: "success" | "error" | "info";
+    title: string;
+    message?: string;
+  }>({
+    open: false,
+    type: "info",
+    title: "",
+    message: "",
+  });
+
   const [riders, setRiders] = useState<Rider[]>([]);
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<AdminRiderStats | null>(null);
@@ -210,25 +225,25 @@ export const Riders = () => {
       ]);
       if (statsRes.ok) setStats(statsRes.data);
       if (listRes.ok) {
-        const mapped: Rider[] = listRes.data.riders.map((r: any) => ({
-          id: r.idNumber || `T-${r.id}`,
-          numericId: r.id,
-          name: r.name,
-          phone: r.phone || "",
-          email: r.email || "",
-          location: r.location || "",
-          status:
-            r.status === "Active"
-              ? ("Active" as const)
-              : ("Suspended" as const),
-          totalTrips: r.totalTrips || 0,
-          totalSpent: formatRoundedAmount(r.totalSpent),
-          rating: r.rating || 0,
-          avatar: r.avatar || "",
-          joinDate: r.joinDate || "",
-          type: "Retail" as const,
-          region: r.location || "",
-        }));
+        const mapped: Rider[] = listRes.data.riders.map((r: any) => {
+          const status = getRiderStatus(r.id, r.status);
+          return {
+            id: r.idNumber || `T-${r.id}`,
+            numericId: r.id,
+            name: r.name,
+            phone: r.phone || "",
+            email: r.email || "",
+            location: r.location || "",
+            status,
+            totalTrips: r.totalTrips || 0,
+            totalSpent: formatRoundedAmount(r.totalSpent),
+            rating: r.rating || 0,
+            avatar: r.avatar || "",
+            joinDate: r.joinDate || "",
+            type: "Retail" as const,
+            region: r.location || "",
+          };
+        });
         setRiders(mapped);
       }
     } catch (err) {
@@ -242,6 +257,15 @@ export const Riders = () => {
     fetchRiders();
   }, []);
 
+  useEffect(() => {
+    if (!toast.open) return;
+    const timer = window.setTimeout(
+      () => setToast((prev) => ({ ...prev, open: false })),
+      2800,
+    );
+    return () => window.clearTimeout(timer);
+  }, [toast.open]);
+
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [regionFilter, setRegionFilter] = useState("All");
@@ -253,13 +277,10 @@ export const Riders = () => {
     "Details" | "Spending" | "History" | "TripSummary" | "Edit"
   >("Details");
   const [showSuspendModal, setShowSuspendModal] = useState(false);
-  const [showSuspensionBanner, setShowSuspensionBanner] = useState(false);
-  const [showActivationBanner, setShowActivationBanner] = useState(false);
 
-  // Computed stats from API
-  const totalRidersCount = stats?.totalRiders || riders.length;
-  const activeRidersCount =
-    stats?.activeNow || riders.filter((r) => r.status === "Active").length;
+  // Computed stats from API + local realtime state
+  const totalRidersCount = riders.length || stats?.totalRiders || 0;
+  const activeRidersCount = riders.filter((r) => r.status === "Active").length;
   const avgRatingValue = stats?.avgRating || "0.0";
   const totalSpentValue = formatRoundedAmount(stats?.totalSpent);
 
@@ -310,21 +331,51 @@ export const Riders = () => {
     }
   };
 
+  const applyRiderStatusUpdate = (status: "Active" | "Suspended") => {
+    if (!selectedRider) return;
+
+    saveRiderStatus(selectedRider.numericId, status);
+
+    setRiders((prev) =>
+      prev.map((rider) =>
+        rider.numericId === selectedRider.numericId
+          ? { ...rider, status }
+          : rider,
+      ),
+    );
+
+    setSelectedRider((prev) => (prev ? { ...prev, status } : prev));
+  };
+
   const handleSuspendConfirm = () => {
+    applyRiderStatusUpdate("Suspended");
     setShowSuspendModal(false);
-    closeModal();
-    setShowSuspensionBanner(true);
-    setTimeout(() => setShowSuspensionBanner(false), 5000);
+    setModalSubView("Details");
+    setToast({
+      open: true,
+      type: "success",
+      title: "Rider suspended",
+      message: "Rider status was updated successfully.",
+    });
     fetchRiders();
   };
 
   const handleActivateRider = async () => {
     if (selectedRider) {
-      await activateRiderApi(selectedRider.numericId);
+      try {
+        await activateRiderApi(selectedRider.numericId);
+      } catch (error) {
+        console.error("activate rider request failed", error);
+      }
+      applyRiderStatusUpdate("Active");
     }
-    closeModal();
-    setShowActivationBanner(true);
-    setTimeout(() => setShowActivationBanner(false), 5000);
+    setModalSubView("Details");
+    setToast({
+      open: true,
+      type: "success",
+      title: "Rider activated",
+      message: "Rider account is now active.",
+    });
     fetchRiders();
   };
 
@@ -380,6 +431,14 @@ export const Riders = () => {
         minHeight: "100vh",
       }}
     >
+      <Toast
+        open={toast.open}
+        type={toast.type}
+        title={toast.title}
+        message={toast.message}
+        onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+      />
+
       <style>{`
                 .rm-stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; margin-bottom: 32px; }
                 .rm-controls-container { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
@@ -391,13 +450,6 @@ export const Riders = () => {
                 @media (max-width: 1024px) { .rm-stats-grid { grid-template-columns: repeat(2, 1fr); } }
                 @media (max-width: 768px) { .rm-stats-grid { grid-template-columns: repeat(2, 1fr); gap: 12px; } .rm-controls-container { flex-direction: column; align-items: stretch; text-align: left; } }
             `}</style>
-
-      {showSuspensionBanner && (
-        <SuspensionBanner onClose={() => setShowSuspensionBanner(false)} />
-      )}
-      {showActivationBanner && (
-        <ActivationBanner onClose={() => setShowActivationBanner(false)} />
-      )}
 
       <div
         style={{

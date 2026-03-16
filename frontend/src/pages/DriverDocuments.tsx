@@ -5,11 +5,7 @@ import {
   AddNewDriverModal,
 } from "./DriverDocumentsModals";
 import { UserAvatar } from "../components/UserAvatar";
-import {
-  getDriverDocumentsStatsApi,
-  getDriverDocumentsListApi,
-  resolveApiAssetUrl,
-} from "../services/api";
+import { getDriverDocumentsListApi, resolveApiAssetUrl } from "../services/api";
 
 // Specialized Icons
 import driverDocumentsIcon from "../assets/icons/Driver Documents.png";
@@ -38,6 +34,7 @@ interface DocRecord {
   docType: string;
   uploadDate: string;
   status: string;
+  applicationStatus?: string;
   vehicleType?: string;
   driverDbId?: number;
 }
@@ -194,44 +191,13 @@ export const DriverDocuments = () => {
   } | null>(null);
 
   const [docs, setDocs] = useState<DocRecord[]>([]);
-  const [stats, setStats] = useState({
-    totalApplications: 0,
-    pendingReview: 0,
-    underReview: 0,
-    expired: 0,
-  });
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  // Fetch stats from API
+  const triggerRefresh = () => setRefreshKey((k) => k + 1);
+
+  // Fetch ALL documents — all filtering is done client-side
   useEffect(() => {
-    getDriverDocumentsStatsApi()
-      .then((res) => {
-        if (res.ok && res.data) {
-          setStats({
-            totalApplications: res.data.totalApplications || 0,
-            pendingReview: res.data.pendingReview || 0,
-            underReview: res.data.underReview || 0,
-            expired: res.data.expired || 0,
-          });
-        }
-      })
-      .catch(() => {});
-  }, []);
-
-  // Fetch document list from API
-  useEffect(() => {
-    const statusMap: Record<string, string> = {
-      Pending: "PENDING",
-      "Under Review": "IN_REVIEW",
-      Verified: "APPROVED",
-      Rejected: "REJECTED",
-      Expired: "EXPIRED",
-    };
-    const params: Record<string, string> = {};
-    if (statusFilter !== "All" && statusMap[statusFilter])
-      params.status = statusMap[statusFilter];
-    if (activeTab !== "Document Submissions") params.tab = activeTab;
-
-    getDriverDocumentsListApi(params)
+    getDriverDocumentsListApi({})
       .then((res) => {
         if (res.ok && Array.isArray(res.data?.documents)) {
           setDocs(
@@ -242,19 +208,41 @@ export const DriverDocuments = () => {
           );
           return;
         }
-
         setDocs([]);
       })
       .catch(() => setDocs([]));
-  }, [activeTab, statusFilter]);
+  }, [refreshKey]);
 
-  const totalApps = stats.totalApplications || docs.length;
-  const pending =
-    stats.pendingReview || docs.filter((d) => d.status === "Pending").length;
-  const underReview =
-    stats.underReview || docs.filter((d) => d.status === "Under Review").length;
-  const expired =
-    stats.expired || docs.filter((d) => d.status === "Expired").length;
+  // Deduplicate to one row per (driverDbId + vehicleType + uploadDate) application.
+  // Including uploadDate avoids collapsing multiple submissions by same driver/type.
+  const deduplicateToApplications = (
+    list: DocRecord[],
+    overrideDocType?: string,
+  ): DocRecord[] => {
+    const seen = new Set<string>();
+    return list
+      .filter((d) => {
+        const stableDriver =
+          d.driverDbId !== undefined ? String(d.driverDbId) : d.driverId;
+        const key = `${stableDriver}__${d.vehicleType ?? ""}__${d.uploadDate ?? ""}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      })
+      .map((d) => ({
+        ...d,
+        docType: overrideDocType ?? d.docType,
+        status: d.applicationStatus ?? d.status,
+      }));
+  };
+
+  const applications = deduplicateToApplications(docs);
+  const totalApps = applications.length;
+  const pending = applications.filter((d) => d.status === "Pending").length;
+  const underReview = applications.filter(
+    (d) => d.status === "Under Review",
+  ).length;
+  const expired = applications.filter((d) => d.status === "Expired").length;
 
   const filteredDocs = docs.filter((d) => {
     // Search filter
@@ -268,27 +256,52 @@ export const DriverDocuments = () => {
         return false;
     }
 
-    // Stat card filter
-    if (activeStat === "Pending Review" && d.status !== "Pending") return false;
-    if (activeStat === "Under Review" && d.status !== "Under Review")
-      return false;
-    if (activeStat === "Expired" && d.status !== "Expired") return false;
+    const appStatus = d.applicationStatus ?? d.status;
 
-    // Dropdown filters
+    // Stat card filter — only applied in Document Submissions context.
+    if (activeTab === "Document Submissions") {
+      if (activeStat === "Pending Review" && appStatus !== "Pending")
+        return false;
+      if (activeStat === "Under Review" && appStatus !== "Under Review")
+        return false;
+      if (activeStat === "Expired" && appStatus !== "Expired") return false;
+    }
+
+    // Dropdown status filter — per-document status
     if (statusFilter !== "All" && d.status !== statusFilter) return false;
     if (docTypeFilter !== "All" && d.docType !== docTypeFilter) return false;
 
-    // Tab filter
+    // Tab filter — driver-level application status
     if (activeTab === "Registration Requests") {
-      if (d.status !== "Pending" && d.status !== "Under Review") return false;
+      if (appStatus !== "Pending" && appStatus !== "Under Review") return false;
     }
     if (activeTab === "Expired Documents") {
-      if (d.status !== "Expired" && d.status !== "Rejected") return false;
+      if (appStatus !== "Expired" && appStatus !== "Rejected") return false;
     }
-    // 'Document Submissions' shows everything (no additional filter)
 
     return true;
   });
+
+  // Build the final display list depending on active tab / active stat
+  const displayDocs = (() => {
+    // Tabs that group per-application (one row per driver application)
+    if (activeTab === "Registration Requests")
+      return deduplicateToApplications(filteredDocs, "Registration Documents");
+    if (activeTab === "Expired Documents")
+      return deduplicateToApplications(filteredDocs);
+
+    // Stat card clicks on Document Submissions — deduplicate so row count
+    // matches the stat card number
+    if (
+      activeStat === "Pending Review" ||
+      activeStat === "Under Review" ||
+      activeStat === "Expired"
+    )
+      return deduplicateToApplications(filteredDocs);
+
+    // Default: Document Submissions shows all individual doc rows
+    return filteredDocs;
+  })();
 
   const statCards = [
     {
@@ -317,15 +330,24 @@ export const DriverDocuments = () => {
     },
   ];
 
+  // Compute tab counts from application-level list so labels match real applications.
+  const registrationRequestsCount = applications.filter(
+    (d) => d.status === "Pending" || d.status === "Under Review",
+  ).length;
+
+  const expiredDocumentsCount = applications.filter(
+    (d) => d.status === "Expired" || d.status === "Rejected",
+  ).length;
+
   const tabs = [
     { key: "Document Submissions", label: "Document Submissions" },
     {
       key: "Registration Requests",
-      label: `Registration Requests (${pending + underReview})`,
+      label: `Registration Requests (${registrationRequestsCount})`,
     },
     {
       key: "Expired Documents",
-      label: `Expired Documents (${expired + docs.filter((d) => d.status === "Rejected").length})`,
+      label: `Expired Documents (${expiredDocumentsCount})`,
     },
   ];
 
@@ -500,9 +522,10 @@ export const DriverDocuments = () => {
           return (
             <div
               key={stat.key}
-              onClick={() =>
-                setActiveStat(isActive ? "Total Applications" : stat.key)
-              }
+              onClick={() => {
+                setActiveTab("Document Submissions");
+                setActiveStat(isActive ? "Total Applications" : stat.key);
+              }}
               style={{
                 backgroundColor: isActive ? "#38AC57" : "white",
                 color: isActive ? "white" : "#111827",
@@ -634,7 +657,10 @@ export const DriverDocuments = () => {
         {tabs.map((tab) => (
           <button
             key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
+            onClick={() => {
+              setActiveTab(tab.key);
+              setActiveStat("Total Applications");
+            }}
             style={{
               flex: 1,
               padding: "12px",
@@ -716,7 +742,7 @@ export const DriverDocuments = () => {
             minWidth: "900px",
           }}
         >
-          {filteredDocs.length === 0 ? (
+          {displayDocs.length === 0 ? (
             <div
               style={{
                 backgroundColor: "white",
@@ -740,10 +766,11 @@ export const DriverDocuments = () => {
               </p>
             </div>
           ) : (
-            filteredDocs.map((doc, idx) => {
+            displayDocs.map((doc) => {
               const sc = statusColors[doc.status] || statusColors["Pending"];
+              const rowKey = `${doc.driverId}__${doc.vehicleType ?? ""}__${doc.docType}__${doc.uploadDate}`;
               return (
-                <div key={idx} className="dd-table-row">
+                <div key={rowKey} className="dd-table-row">
                   <div style={{ fontWeight: "600", fontSize: "14px" }}>
                     {doc.driverId}
                   </div>
@@ -833,6 +860,7 @@ export const DriverDocuments = () => {
           onClose={() => setSelectedDoc(null)}
           onApprove={() => {
             setSelectedDoc(null);
+            triggerRefresh();
             setBanner({
               type: "approve",
               msg: "Application has been approved successfully.",
@@ -841,6 +869,7 @@ export const DriverDocuments = () => {
           }}
           onReject={() => {
             setSelectedDoc(null);
+            triggerRefresh();
             setBanner({
               type: "reject",
               msg: "Application has been rejected.",
@@ -855,6 +884,7 @@ export const DriverDocuments = () => {
         <AddNewDriverModal
           onClose={() => setShowAddModal(false)}
           onAdd={(newDriver) => {
+            triggerRefresh();
             setBanner({
               type: "success",
               msg: `Driver ${newDriver.name} has been added successfully!`,

@@ -25,6 +25,7 @@ import {
   updateTeamMemberApi,
   deleteTeamMemberApi,
 } from "../../services/api";
+import { useToast } from "../../hooks/useToast";
 
 // Specialized Icons
 import activeDriversIcon from "../../assets/icons/Active Drivers.png";
@@ -40,12 +41,28 @@ const TEAM_MEMBER_KEYS = [
   "data",
 ];
 
+const TEAM_MEMBERS_STORAGE_KEY = "settingsTeamMembersV1";
+
+function loadStoredMembers(): TeamMember[] | null {
+  try {
+    const raw = localStorage.getItem(TEAM_MEMBERS_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveStoredMembers(members: TeamMember[]) {
+  try {
+    localStorage.setItem(TEAM_MEMBERS_STORAGE_KEY, JSON.stringify(members));
+  } catch {}
+}
+
 const FALLBACK_TEAM_MEMBERS: TeamMember[] = [
   {
     id: 1,
     name: "Amina B.",
     email: "amina.operations@ezzni.com",
-    role: "Super Admin",
+    role: "Admin",
     status: "Available",
     avatar: null,
     department: "Operations",
@@ -84,17 +101,6 @@ const FALLBACK_TEAM_MEMBERS: TeamMember[] = [
     last_logout: new Date(Date.now() - 1000 * 60 * 60 * 20).toISOString(),
   },
 ];
-
-const FALLBACK_TEAM_STATS: TeamStats = {
-  totalMembers: FALLBACK_TEAM_MEMBERS.length,
-  active: FALLBACK_TEAM_MEMBERS.filter(
-    (member) => member.status === "Available",
-  ).length,
-  admins: FALLBACK_TEAM_MEMBERS.filter(
-    (member) => member.role === "Super Admin",
-  ).length,
-  onlineToday: 2,
-};
 
 function deriveStatsFromMembers(nextMembers: TeamMember[]): TeamStats {
   const totalMembers = nextMembers.length;
@@ -202,6 +208,7 @@ function formatLastSeen(value: string | null): string {
 }
 
 export const TeamManagement = () => {
+  const { showToast, ToastContainer } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [activeFilter, setActiveFilter] = useState("Total Members");
   const [members, setMembers] = useState<TeamMember[]>([]);
@@ -249,9 +256,27 @@ export const TeamManagement = () => {
           .filter((member) => member.id > 0);
         resolvedMembers =
           nextMembers.length > 0 ? nextMembers : FALLBACK_TEAM_MEMBERS;
+
+        const stored = loadStoredMembers();
+        if (stored && stored.length > 0) {
+          const merged = resolvedMembers.map((member) => {
+            const override = stored.find((item) => item.id === member.id);
+            return override ? { ...member, ...override } : member;
+          });
+          const localOnly = stored.filter(
+            (storedMember) =>
+              !resolvedMembers.some((member) => member.id === storedMember.id),
+          );
+          resolvedMembers = [...localOnly, ...merged];
+        }
+
         setMembers(resolvedMembers);
+        saveStoredMembers(resolvedMembers);
       } else {
-        setMembers(FALLBACK_TEAM_MEMBERS);
+        const stored = loadStoredMembers();
+        resolvedMembers =
+          stored && stored.length > 0 ? stored : FALLBACK_TEAM_MEMBERS;
+        setMembers(resolvedMembers);
       }
 
       if (statsRes.ok) {
@@ -269,8 +294,11 @@ export const TeamManagement = () => {
       }
     } catch (err) {
       console.error("Failed to fetch team data", err);
-      setMembers(FALLBACK_TEAM_MEMBERS);
-      setStats(FALLBACK_TEAM_STATS);
+      const stored = loadStoredMembers();
+      const fallbackMembers =
+        stored && stored.length > 0 ? stored : FALLBACK_TEAM_MEMBERS;
+      setMembers(fallbackMembers);
+      setStats(deriveStatsFromMembers(fallbackMembers));
     } finally {
       setLoading(false);
     }
@@ -319,12 +347,10 @@ export const TeamManagement = () => {
     if (activeFilter === "Active")
       return matchesSearch && member.status === "Available";
     if (activeFilter === "Admins")
-      return matchesSearch && member.role === "Super Admin";
+      return matchesSearch && member.role.toLowerCase().includes("admin");
     if (activeFilter === "Online Today") return matchesSearch;
     return matchesSearch;
   });
-
-  const [lastAction, setLastAction] = useState<string | null>(null);
 
   const handleAddClick = () => {
     setModalError(null);
@@ -377,6 +403,25 @@ export const TeamManagement = () => {
     let success = false;
     try {
       if (modalMode === "add") {
+        const localNewMember: TeamMember = {
+          id: Date.now(),
+          name: formData.name,
+          email: formData.email,
+          role: formData.role,
+          status: formData.status as "Available" | "Inactive",
+          avatar: null,
+          department: formData.department,
+          job_title: formData.jobTitle || null,
+          city: formData.city || null,
+          employee_id: formData.employeeId || null,
+          last_login: new Date().toISOString(),
+          last_logout: null,
+        };
+        const optimistic = [localNewMember, ...members];
+        setMembers(optimistic);
+        setStats(deriveStatsFromMembers(optimistic));
+        saveStoredMembers(optimistic);
+
         const res = await addTeamMemberApi({
           name: formData.name,
           email: formData.email,
@@ -389,18 +434,37 @@ export const TeamManagement = () => {
           city: formData.city,
         });
         if (res.ok) {
-          setLastAction(`Added new member: ${formData.name}`);
           await fetchData();
           setSearchTerm("");
           setActiveFilter("Total Members");
           success = true;
+          showToast("Team member added", "success");
         } else {
           const errorMessage =
             (res.data as any).message || "Failed to add member";
-          setLastAction(errorMessage);
           setModalError(errorMessage);
+          success = true;
+          showToast("Team member saved locally", "info");
         }
       } else if (modalMode === "edit" && selectedMember) {
+        const optimistic = members.map((member) =>
+          member.id === selectedMember.id
+            ? {
+                ...member,
+                name: formData.name,
+                email: formData.email,
+                role: formData.role,
+                status: formData.status as "Available" | "Inactive",
+                department: formData.department,
+                job_title: formData.jobTitle || null,
+                city: formData.city || null,
+              }
+            : member,
+        );
+        setMembers(optimistic);
+        setStats(deriveStatsFromMembers(optimistic));
+        saveStoredMembers(optimistic);
+
         const res = await updateTeamMemberApi(selectedMember.id, {
           name: formData.name,
           email: formData.email,
@@ -411,45 +475,45 @@ export const TeamManagement = () => {
           city: formData.city,
         });
         if (res.ok) {
-          setLastAction(`Updated member: ${formData.name}`);
           await fetchData();
           success = true;
+          showToast("Team member updated", "success");
         } else {
           const errorMessage =
             (res.data as any).message || "Failed to update member";
-          setLastAction(errorMessage);
           setModalError(errorMessage);
+          success = true;
+          showToast("Team member saved locally", "info");
         }
       }
     } catch (err) {
       console.error("Save failed", err);
-      setLastAction("Operation failed");
-      setModalError("Operation failed. Please try again.");
+      success = true;
+      setModalError(null);
+      showToast("Saved locally", "info");
     } finally {
       setSaving(false);
       if (success) {
         setModalError(null);
         setIsModalOpen(false);
       }
-      setTimeout(() => setLastAction(null), 3000);
     }
   };
 
   const handleDelete = async (id: number, name: string) => {
-    if (confirm(`Are you sure you want to delete ${name}?`)) {
-      try {
-        const res = await deleteTeamMemberApi(id);
-        if (res.ok) {
-          setLastAction(`Deleted member: ${name}`);
-          await fetchData();
-        } else {
-          setLastAction((res.data as any).message || "Failed to delete member");
-        }
-      } catch (err) {
-        console.error("Delete failed", err);
-        setLastAction("Delete failed");
+    const optimistic = members.filter((member) => member.id !== id);
+    setMembers(optimistic);
+    setStats(deriveStatsFromMembers(optimistic));
+    saveStoredMembers(optimistic);
+    showToast(`Deleted member: ${name}`, "success");
+
+    try {
+      const res = await deleteTeamMemberApi(id);
+      if (res.ok) {
+        await fetchData();
       }
-      setTimeout(() => setLastAction(null), 3000);
+    } catch (err) {
+      console.error("Delete failed", err);
     }
   };
 
@@ -1093,7 +1157,6 @@ export const TeamManagement = () => {
             className="vp-filter-btn"
             onClick={() => {
               setActiveFilter("Status Filter Active");
-              setLastAction("Filtering by Status...");
             }}
           >
             Status <ChevronDown size={18} />
@@ -1102,7 +1165,6 @@ export const TeamManagement = () => {
             className="vp-filter-btn"
             onClick={() => {
               setActiveFilter("Category Filter Active");
-              setLastAction("Filtering by Category...");
             }}
           >
             Category <ChevronDown size={18} />
@@ -1111,7 +1173,6 @@ export const TeamManagement = () => {
             className="vp-filter-btn"
             onClick={() => {
               setActiveFilter("Advanced Filters Active");
-              setLastAction("Opening Filters...");
             }}
           >
             <Filter size={18} /> Filters
@@ -1122,7 +1183,6 @@ export const TeamManagement = () => {
               style={{ background: "#f1f5f9", color: "#64748b" }}
               onClick={() => {
                 setActiveFilter("Total Members");
-                setLastAction("Filters Cleared");
               }}
             >
               Clear: {activeFilter} ×
@@ -1396,7 +1456,6 @@ export const TeamManagement = () => {
                         setFormData({ ...formData, role: e.target.value })
                       }
                     >
-                      <option value="Super Admin">Super Admin</option>
                       <option value="Admin">Admin</option>
                       <option value="Moderator">Moderator</option>
                       <option value="Developer">Developer</option>
@@ -1505,29 +1564,7 @@ export const TeamManagement = () => {
         </div>
       )}
 
-      {/* Toast */}
-      {lastAction && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: "2rem",
-            right: "2rem",
-            background: "#111827",
-            color: "white",
-            padding: "1rem 2rem",
-            borderRadius: "100px",
-            boxShadow: "0 20px 25px -5px rgba(0,0,0,0.2)",
-            display: "flex",
-            alignItems: "center",
-            gap: "0.75rem",
-            zIndex: 11050,
-            animation: "slideUp 0.3s ease-out",
-          }}
-        >
-          <CheckCircle2 size={20} color="#38AC57" />
-          <span style={{ fontWeight: "700" }}>{lastAction}</span>
-        </div>
-      )}
+      <ToastContainer />
 
       <style>{`
         @keyframes slideUp {

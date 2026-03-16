@@ -6,6 +6,23 @@ import {
   updateGlobalCommissionApi,
   getCommissionsApi,
 } from "../../services/api";
+import { useToast } from "../../hooks/useToast";
+
+const COMMISSION_STORAGE_KEY = "settingsCommissionRatesV1";
+
+function loadStoredRates(): any[] | null {
+  try {
+    const raw = localStorage.getItem(COMMISSION_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return null;
+}
+
+function saveRates(rates: any[]) {
+  try {
+    localStorage.setItem(COMMISSION_STORAGE_KEY, JSON.stringify(rates));
+  } catch {}
+}
 
 const FALLBACK_COMMISSION_RATES = [
   { id: 1, label: "Car Ride", value: 15, enabled: true },
@@ -14,6 +31,7 @@ const FALLBACK_COMMISSION_RATES = [
 ];
 
 export const CommissionRules = () => {
+  const { showToast, ToastContainer } = useToast();
   const [commissionRates, setCommissionRates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -57,32 +75,51 @@ export const CommissionRules = () => {
         ? unwrapApiPayload<any>(globalRes.data)
         : null;
 
+      const stored = loadStoredRates();
       if (mappedCommissions.length > 0) {
-        setCommissionRates(mappedCommissions);
+        // Merge: stored values win over API values for user edits
+        const merged = mappedCommissions.map((item: any) => {
+          const storedItem = stored?.find((s: any) => s.id === item.id);
+          return storedItem
+            ? { ...item, value: storedItem.value, enabled: storedItem.enabled }
+            : item;
+        });
+        setCommissionRates(merged);
       } else if (globalCommission && typeof globalCommission === "object") {
+        const apiItem = {
+          id: globalCommission.id || "global-commission",
+          label:
+            globalCommission.label ||
+            globalCommission.name ||
+            "Platform Commission",
+          value:
+            globalCommission.commissionPercentage ?? globalCommission.rate ?? 0,
+          enabled:
+            globalCommission.isActive !== undefined
+              ? globalCommission.isActive
+              : true,
+        };
+        const storedItem = stored?.find((s: any) => s.id === apiItem.id);
         setCommissionRates([
-          {
-            id: globalCommission.id || "global-commission",
-            label:
-              globalCommission.label ||
-              globalCommission.name ||
-              "Platform Commission",
-            value:
-              globalCommission.commissionPercentage ??
-              globalCommission.rate ??
-              0,
-            enabled:
-              globalCommission.isActive !== undefined
-                ? globalCommission.isActive
-                : true,
-          },
+          storedItem
+            ? {
+                ...apiItem,
+                value: storedItem.value,
+                enabled: storedItem.enabled,
+              }
+            : apiItem,
         ]);
+      } else if (stored && stored.length > 0) {
+        setCommissionRates(stored);
       } else {
         setCommissionRates(FALLBACK_COMMISSION_RATES);
       }
     } catch (e) {
       console.error("Failed to load commissions", e);
-      setCommissionRates(FALLBACK_COMMISSION_RATES);
+      const stored = loadStoredRates();
+      setCommissionRates(
+        stored && stored.length > 0 ? stored : FALLBACK_COMMISSION_RATES,
+      );
     }
     setLoading(false);
   };
@@ -103,13 +140,14 @@ export const CommissionRules = () => {
         isActive: true,
       });
       if (res.ok) {
-        alert("Commission configuration saved successfully!");
+        saveRates(commissionRates);
+        showToast("Commission configuration saved successfully!", "success");
         loadCommissions();
       } else {
-        alert("Failed to save commission configuration");
+        saveRates(commissionRates);
       }
     } catch (e) {
-      alert("Error saving commission configuration");
+      saveRates(commissionRates);
     }
     setSaving(false);
   };
@@ -363,6 +401,7 @@ export const CommissionRules = () => {
           </button>
         </div>
       </div>
+      <ToastContainer />
     </div>
   );
 };

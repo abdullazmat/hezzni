@@ -20,6 +20,7 @@ export const Coupons = () => {
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [stats, setStats] = useState({ total: 0, active: 0, expired: 0 });
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -60,6 +61,7 @@ export const Coupons = () => {
   }, [promotions, searchQuery]);
 
   const handleUpdatePromotion = async (updated: Promotion) => {
+    setActionError(null);
     const dbId = (updated as any).dbId || updated.id;
     // Map service names back to IDs for the API
     const serviceNameToId: Record<string, number> = {
@@ -72,36 +74,60 @@ export const Coupons = () => {
       .map((name) => serviceNameToId[name])
       .filter(Boolean);
 
-    await updateAdminCouponApi(dbId, {
-      promotionName: updated.name,
-      code: updated.code,
-      description: updated.description,
-      discountType:
-        updated.discountType === "Percentage" ? "PERCENTAGE" : "FIXED",
-      discountValue: parseFloat(updated.discountValue) || 0,
-      expiryDate: updated.validUntil || undefined,
-      isActive: updated.status === "Active",
-      maxUsage: updated.maxUsage,
-      minOrderAmount:
-        parseFloat(updated.minOrderAmount?.replace(/[^0-9.]/g, "") || "0") || 0,
-      eligibleServiceIds,
-    });
-    setPromotions((prev) =>
-      prev.map((p) => (p.id === updated.id ? updated : p)),
-    );
-    fetchPromotions();
+    try {
+      const res = await updateAdminCouponApi(dbId, {
+        promotionName: updated.name,
+        code: updated.code,
+        description: updated.description,
+        discountType:
+          updated.discountType === "Percentage" ? "PERCENTAGE" : "FIXED",
+        discountValue: parseFloat(updated.discountValue) || 0,
+        expiryDate: updated.validUntil || undefined,
+        isActive: updated.status === "Active",
+        maxUsage: updated.maxUsage,
+        minOrderAmount:
+          parseFloat(updated.minOrderAmount?.replace(/[^0-9.]/g, "") || "0") ||
+          0,
+        eligibleServiceIds,
+      });
+
+      if (!res.ok) {
+        setActionError((res.data as any)?.message || "Failed to update coupon");
+        return;
+      }
+
+      setPromotions((prev) =>
+        prev.map((p) => (p.id === updated.id ? updated : p)),
+      );
+      await fetchPromotions();
+      await fetchStats();
+    } catch {
+      setActionError("Failed to update coupon");
+    }
   };
 
   const handleDeletePromotion = async (id: string) => {
+    setActionError(null);
     const promo = promotions.find((p) => p.id === id);
     const dbId = (promo as any)?.dbId || id;
-    await deleteAdminCouponApi(dbId);
-    setPromotions((prev) => prev.filter((p) => p.id !== id));
-    setIsDetailsModalOpen(false);
-    fetchPromotions();
+    try {
+      const res = await deleteAdminCouponApi(dbId);
+      if (!res.ok) {
+        setActionError((res.data as any)?.message || "Failed to delete coupon");
+        return;
+      }
+
+      setPromotions((prev) => prev.filter((p) => p.id !== id));
+      setIsDetailsModalOpen(false);
+      await fetchPromotions();
+      await fetchStats();
+    } catch {
+      setActionError("Failed to delete coupon");
+    }
   };
 
   const handleCreatePromotion = async (newPromo: Promotion) => {
+    setActionError(null);
     const serviceNameToId: Record<string, number> = {
       Rides: 1,
       Motorcycle: 2,
@@ -112,23 +138,34 @@ export const Coupons = () => {
       .map((name) => serviceNameToId[name])
       .filter(Boolean);
 
-    await createAdminCouponApi({
-      promotionName: newPromo.name,
-      code: newPromo.code,
-      description: newPromo.description,
-      discountType:
-        newPromo.discountType === "Percentage" ? "PERCENTAGE" : "FIXED",
-      discountValue: parseFloat(newPromo.discountValue) || 0,
-      expiryDate: newPromo.validUntil || undefined,
-      isActive: newPromo.status === "Active",
-      maxUsage: newPromo.maxUsage,
-      minOrderAmount:
-        parseFloat(newPromo.minOrderAmount?.replace(/[^0-9.]/g, "") || "0") ||
-        0,
-      eligibleServiceIds,
-    });
-    setIsCreateModalOpen(false);
-    fetchPromotions();
+    try {
+      const res = await createAdminCouponApi({
+        promotionName: newPromo.name,
+        code: newPromo.code,
+        description: newPromo.description,
+        discountType:
+          newPromo.discountType === "Percentage" ? "PERCENTAGE" : "FIXED",
+        discountValue: parseFloat(newPromo.discountValue) || 0,
+        expiryDate: newPromo.validUntil || undefined,
+        isActive: newPromo.status === "Active",
+        maxUsage: newPromo.maxUsage,
+        minOrderAmount:
+          parseFloat(newPromo.minOrderAmount?.replace(/[^0-9.]/g, "") || "0") ||
+          0,
+        eligibleServiceIds,
+      });
+
+      if (!res.ok) {
+        setActionError((res.data as any)?.message || "Failed to create coupon");
+        return;
+      }
+
+      setIsCreateModalOpen(false);
+      await fetchPromotions();
+      await fetchStats();
+    } catch {
+      setActionError("Failed to create coupon");
+    }
   };
 
   return (
@@ -308,6 +345,11 @@ export const Coupons = () => {
         <div className="prm-title-section">
           <h1>Promotions & Coupons</h1>
           <p>Manage promotional campaigns and discount codes</p>
+          {actionError && (
+            <p style={{ color: "#b91c1c", marginTop: "8px", fontWeight: 600 }}>
+              {actionError}
+            </p>
+          )}
         </div>
         <button
           className="prm-create-btn"
@@ -319,30 +361,87 @@ export const Coupons = () => {
 
       <div className="prm-stats-grid">
         <div className="prm-stat-card">
-          <div className="prm-stat-icon" style={{ backgroundColor: "#eef2ff", color: "#6366f1" }}>
+          <div
+            className="prm-stat-icon"
+            style={{ backgroundColor: "#eef2ff", color: "#6366f1" }}
+          >
             <Ticket size={24} />
           </div>
           <div>
-            <div style={{ color: "#6B7280", fontSize: "0.85rem", fontWeight: "600" }}>Total Coupons</div>
-            <div style={{ fontSize: "1.5rem", fontWeight: "800", color: "#111827" }}>{stats.total}</div>
+            <div
+              style={{
+                color: "#6B7280",
+                fontSize: "0.85rem",
+                fontWeight: "600",
+              }}
+            >
+              Total Coupons
+            </div>
+            <div
+              style={{
+                fontSize: "1.5rem",
+                fontWeight: "800",
+                color: "#111827",
+              }}
+            >
+              {stats.total}
+            </div>
           </div>
         </div>
         <div className="prm-stat-card">
-          <div className="prm-stat-icon" style={{ backgroundColor: "#ecfdf5", color: "#10b981" }}>
+          <div
+            className="prm-stat-icon"
+            style={{ backgroundColor: "#ecfdf5", color: "#10b981" }}
+          >
             <CheckCircle size={24} />
           </div>
           <div>
-            <div style={{ color: "#6B7280", fontSize: "0.85rem", fontWeight: "600" }}>Active Coupons</div>
-            <div style={{ fontSize: "1.5rem", fontWeight: "800", color: "#111827" }}>{stats.active}</div>
+            <div
+              style={{
+                color: "#6B7280",
+                fontSize: "0.85rem",
+                fontWeight: "600",
+              }}
+            >
+              Active Coupons
+            </div>
+            <div
+              style={{
+                fontSize: "1.5rem",
+                fontWeight: "800",
+                color: "#111827",
+              }}
+            >
+              {stats.active}
+            </div>
           </div>
         </div>
         <div className="prm-stat-card">
-          <div className="prm-stat-icon" style={{ backgroundColor: "#fef2f2", color: "#ef4444" }}>
+          <div
+            className="prm-stat-icon"
+            style={{ backgroundColor: "#fef2f2", color: "#ef4444" }}
+          >
             <XCircle size={24} />
           </div>
           <div>
-            <div style={{ color: "#6B7280", fontSize: "0.85rem", fontWeight: "600" }}>Expired Coupons</div>
-            <div style={{ fontSize: "1.5rem", fontWeight: "800", color: "#111827" }}>{stats.expired}</div>
+            <div
+              style={{
+                color: "#6B7280",
+                fontSize: "0.85rem",
+                fontWeight: "600",
+              }}
+            >
+              Expired Coupons
+            </div>
+            <div
+              style={{
+                fontSize: "1.5rem",
+                fontWeight: "800",
+                color: "#111827",
+              }}
+            >
+              {stats.expired}
+            </div>
           </div>
         </div>
       </div>

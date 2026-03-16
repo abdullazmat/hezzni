@@ -37,7 +37,7 @@ const DEFAULT_ADMIN_AVATAR = "/default-admin-avatar.svg";
 
 function isAdminIdentity(name: string): boolean {
   const normalized = name.trim().toLowerCase();
-  return normalized === "admin" || normalized.includes("super admin");
+  return normalized.includes("admin");
 }
 
 interface UserAvatarProps {

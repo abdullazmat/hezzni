@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { UserAvatar } from "../components/UserAvatar";
 import { PageLoader } from "../components/PageLoader";
+import { Toast } from "../components/Toast";
 
 // Vehicle Icons
 import carIcon from "../assets/icons/car.png";
@@ -30,6 +31,7 @@ import {
 import {
   getAdminDriverStatsApi,
   getAdminDriverListApi,
+  getAdminDriverDetailApi,
   activateDriverApi,
   updateDriverApi,
   getDriverEarningsApi,
@@ -38,6 +40,10 @@ import {
   type AdminDriverTrip,
   type AdminDriverEarnings,
 } from "../services/api";
+import {
+  getDriverServiceCategory,
+  type DriverServiceCategory,
+} from "../utils/driverServiceCategory";
 
 // We'll mock the chart if library not installed, or use simple div bars
 
@@ -55,6 +61,7 @@ interface Driver {
   location: string;
 
   vehicleType: "Motorcycle" | "Car" | "Taxi" | "Rental" | string;
+  serviceCategory: DriverServiceCategory;
   vehicleDetails: {
     brand: string;
     color: string;
@@ -1051,6 +1058,18 @@ const EditDriverModalContent = ({
 // --- Main Page Component ---
 
 export const Drivers = () => {
+  const [toast, setToast] = useState<{
+    open: boolean;
+    type: "success" | "error" | "info";
+    title: string;
+    message?: string;
+  }>({
+    open: false,
+    type: "info",
+    title: "",
+    message: "",
+  });
+
   // Data state
   const [drivers, setDrivers] = useState<Driver[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1094,38 +1113,42 @@ export const Drivers = () => {
     ]);
     if (statsRes.ok) setStats(statsRes.data);
     if (listRes.ok) {
-      const mapped: Driver[] = listRes.data.drivers.map((d: any) => ({
-        id: d.idNumber,
-        numericId: d.id,
-        driverId: d.idNumber,
-        name: d.name,
-        email: d.email || "",
-        phone: d.phone || "",
-        avatar: d.avatar || "",
-        rating: d.rating || 0,
-        location: d.location || "",
-        vehicleType: d.vehicleType || "Car",
-        vehicleDetails: {
-          brand: d.vehicleType || "",
-          color: "",
-          plate: "",
-          model: "",
-          year: "",
-        },
-        totalTrips: d.totalTrips || 0,
-        status: d.status || "Active",
-        joinDate: d.joinDate || "",
-        documentStatus: d.isVerified
-          ? ("Verified" as const)
-          : ("Pending" as const),
-        city: d.city || "",
-        region: d.city || "",
-        stats: {
-          cancelationRate: "0%",
-          acceptanceRate: "0%",
-          onlineTime: "0h",
-        },
-      }));
+      const mapped: Driver[] = listRes.data.drivers.map((d: any) => {
+        const serviceCategory = getDriverServiceCategory(d.id, d.vehicleType);
+        return {
+          id: d.idNumber,
+          numericId: d.id,
+          driverId: d.idNumber,
+          name: d.name,
+          email: d.email || "",
+          phone: d.phone || "",
+          avatar: d.avatar || "",
+          rating: d.rating || 0,
+          location: d.location || "",
+          vehicleType: d.vehicleType || "Car",
+          serviceCategory,
+          vehicleDetails: {
+            brand: d.vehicleType || "",
+            color: "",
+            plate: "",
+            model: "",
+            year: "",
+          },
+          totalTrips: d.totalTrips || 0,
+          status: d.status || "Active",
+          joinDate: d.joinDate || "",
+          documentStatus: d.isVerified
+            ? ("Verified" as const)
+            : ("Pending" as const),
+          city: d.city || "",
+          region: d.city || "",
+          stats: {
+            cancelationRate: "0%",
+            acceptanceRate: "0%",
+            onlineTime: "0h",
+          },
+        };
+      });
       setDrivers(mapped);
     }
     setLoading(false);
@@ -1134,6 +1157,15 @@ export const Drivers = () => {
   useEffect(() => {
     fetchDrivers();
   }, []);
+
+  useEffect(() => {
+    if (!toast.open) return;
+    const timer = window.setTimeout(
+      () => setToast((prev) => ({ ...prev, open: false })),
+      2800,
+    );
+    return () => window.clearTimeout(timer);
+  }, [toast.open]);
 
   // Count of active filters
   const activeFilterCount = [
@@ -1179,10 +1211,7 @@ export const Drivers = () => {
     if (statusFilter !== "All" && driver.status !== statusFilter) return false;
     if (regionFilter !== "All" && driver.region !== regionFilter) return false;
     if (cityFilter !== "All" && driver.city !== cityFilter) return false;
-    if (
-      categoryFilter !== "All" &&
-      driver.vehicleDetails.brand !== categoryFilter
-    )
+    if (categoryFilter !== "All" && driver.serviceCategory !== categoryFilter)
       return false;
 
     return true;
@@ -1199,6 +1228,14 @@ export const Drivers = () => {
         paddingBottom: "4rem",
       }}
     >
+      <Toast
+        open={toast.open}
+        type={toast.type}
+        title={toast.title}
+        message={toast.message}
+        onClose={() => setToast((prev) => ({ ...prev, open: false }))}
+      />
+
       <style>{`
                 .dr-stats-grid {
                     display: grid;
@@ -2172,9 +2209,7 @@ export const Drivers = () => {
                             style={{ height: "20px", width: "auto" }}
                           />
                         )}
-                        {selectedDriver.vehicleType === "Car"
-                          ? "Car"
-                          : "Hezzni Standard"}
+                        {selectedDriver.serviceCategory}
                       </div>
                     </div>
                     <div style={{ textAlign: "right" }}>
@@ -2236,7 +2271,10 @@ export const Drivers = () => {
                         Join Date
                       </div>
                       <div style={{ fontWeight: "bold" }}>
-                        {selectedDriver.joinDate}
+                        {selectedDriver.joinDate &&
+                        selectedDriver.joinDate.includes("T")
+                          ? selectedDriver.joinDate.split("T")[0]
+                          : selectedDriver.joinDate || "N/A"}
                       </div>
                     </div>
                     <div>
@@ -2396,7 +2434,55 @@ export const Drivers = () => {
               {modalSubView === "Edit" && selectedDriver && (
                 <EditDriverModalContent
                   driver={selectedDriver}
-                  onSave={() => setModalSubView("Details")}
+                  onSave={async () => {
+                    await fetchDrivers(); // Refresh the list
+                    // Refetch details to update the modal state in real-time
+                    const res = await getAdminDriverDetailApi(
+                      selectedDriver.numericId,
+                    );
+                    if (res.ok) {
+                      const d = res.data;
+                      const serviceCategory = getDriverServiceCategory(
+                        d.id,
+                        d.vehicleType,
+                        selectedDriver.serviceCategory,
+                      );
+                      setSelectedDriver({
+                        id: d.idNumber,
+                        numericId: d.id,
+                        driverId: d.idNumber,
+                        name: d.name,
+                        email: d.email || "",
+                        phone: d.phone || "",
+                        avatar: d.avatar || "",
+                        rating: d.rating || 0,
+                        location: d.location || "",
+                        vehicleType: d.vehicleType || "Car",
+                        serviceCategory,
+                        vehicleDetails: {
+                          brand: d.vehicleDetails?.brand || "",
+                          color: d.vehicleDetails?.color || "",
+                          plate: d.vehicleDetails?.plate || "",
+                          model: d.vehicleDetails?.model || "",
+                          year: d.vehicleDetails?.year || "",
+                        },
+                        totalTrips: d.totalTrips || 0,
+                        status: d.status || "Active",
+                        joinDate: d.joinDate || "",
+                        documentStatus: d.isVerified ? "Verified" : "Pending",
+                        city: d.city || "",
+                        region: d.region || "",
+                        stats: d.stats
+                          ? { ...d.stats, onlineTime: "0h" }
+                          : {
+                              cancelationRate: "0%",
+                              acceptanceRate: "0%",
+                              onlineTime: "0h",
+                            },
+                      });
+                    }
+                    setModalSubView("Details");
+                  }}
                 />
               )}
             </div>
@@ -2409,6 +2495,20 @@ export const Drivers = () => {
         <ChangeCategoryModal
           onClose={() => setShowChangeCategoryModal(false)}
           driver={selectedDriver}
+          onSuccess={(category) => {
+            if (!selectedDriver) return;
+            setSelectedDriver({
+              ...selectedDriver,
+              serviceCategory: category,
+            });
+            setDrivers((prev) =>
+              prev.map((driver) =>
+                driver.numericId === selectedDriver.numericId
+                  ? { ...driver, serviceCategory: category }
+                  : driver,
+              ),
+            );
+          }}
         />
       )}
       {showRidePreferencesModal && (
@@ -2435,6 +2535,14 @@ export const Drivers = () => {
       )}
       {showAddDriverModal && (
         <AddDriverModal
+          onToast={(payload) => {
+            setToast({
+              open: true,
+              type: payload.type,
+              title: payload.title,
+              message: payload.message,
+            });
+          }}
           onClose={() => {
             setShowAddDriverModal(false);
             fetchDrivers();

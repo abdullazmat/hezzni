@@ -1,8 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
-import { X, ArrowLeft, Star } from "lucide-react";
+import { ArrowLeft, Star } from "lucide-react";
 import { Review, ReviewDetail, ReviewHistoryItem } from "./ReviewTypes";
 import { UserAvatar } from "../components/UserAvatar";
-import { getAdminReviewDetailApi, resolveApiAssetUrl } from "../services/api";
+import {
+  getAdminReviewDetailApi,
+  resolveApiAssetUrl,
+  unwrapApiPayload,
+} from "../services/api";
 
 interface ReviewsModalProps {
   isOpen: boolean;
@@ -23,15 +27,59 @@ export const ReviewsModal = ({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [editComment, setEditComment] = useState("");
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [detail, setDetail] = useState<ReviewDetail | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
-  const hydrateHistoryItem = useCallback(
-    (item: ReviewHistoryItem): ReviewHistoryItem => ({
-      ...item,
-      avatar: resolveApiAssetUrl(item.avatar) || "",
+  const normalizeReview = useCallback(
+    (value: Partial<Review> | null | undefined): Review => ({
+      id: String(value?.id ?? review?.id ?? ""),
+      userType: value?.userType === "Passenger" ? "Passenger" : "Driver",
+      userInfo: {
+        name: value?.userInfo?.name || review?.userInfo?.name || "Unknown",
+        id: value?.userInfo?.id || review?.userInfo?.id || "",
+        avatar:
+          resolveApiAssetUrl(value?.userInfo?.avatar) ||
+          resolveApiAssetUrl(review?.userInfo?.avatar) ||
+          "",
+      },
+      reviewDate: value?.reviewDate || review?.reviewDate || "",
+      visible: Boolean(value?.visible ?? review?.visible ?? true),
+      isFlagged: Boolean(value?.isFlagged ?? review?.isFlagged ?? false),
+      rating: Number(value?.rating ?? review?.rating ?? 0),
+      comment: value?.comment || review?.comment || "",
+      tags: Array.isArray(value?.tags) ? value.tags : review?.tags || [],
+      status: value?.status === "Pending" ? "Pending" : "Completed",
+    }),
+    [review],
+  );
+
+  const normalizeHistoryItem = useCallback(
+    (
+      item: Partial<ReviewHistoryItem> | null | undefined,
+      fallbackId: string,
+    ): ReviewHistoryItem => ({
+      id: String(item?.id ?? fallbackId),
+      rating: Number(item?.rating ?? 0),
+      userName: item?.userName || "Unknown",
+      userType: item?.userType === "Passenger" ? "Passenger" : "Driver",
+      date: item?.date || "",
+      comment: item?.comment || "",
+      tags: Array.isArray(item?.tags) ? item.tags : [],
+      status: item?.status === "Pending" ? "Pending" : "Completed",
+      avatar: resolveApiAssetUrl(item?.avatar) || "",
+      visible: Boolean(item?.visible ?? true),
+      isFlagged: Boolean(item?.isFlagged ?? false),
     }),
     [],
+  );
+
+  const hydrateHistoryItem = useCallback(
+    (item: ReviewHistoryItem): ReviewHistoryItem => ({
+      ...normalizeHistoryItem(item, item.id),
+      avatar: resolveApiAssetUrl(item.avatar) || "",
+    }),
+    [normalizeHistoryItem],
   );
 
   const buildFallbackHistory = useCallback(
@@ -100,28 +148,38 @@ export const ReviewsModal = ({
     setIsLoading(true);
     try {
       const response = await getAdminReviewDetailApi(review.id);
-      if (response.ok && response.data) {
-        const receivedReviews = (response.data.receivedReviews || []).map(
-          hydrateHistoryItem,
+      const payload = unwrapApiPayload<any>(response.data);
+
+      if (response.ok && payload?.review) {
+        const normalizedReview = normalizeReview(payload.review);
+        const receivedSource = Array.isArray(payload.receivedReviews)
+          ? payload.receivedReviews
+          : [];
+        const givenSource = Array.isArray(payload.givenReviews)
+          ? payload.givenReviews
+          : [];
+        const receivedReviews = receivedSource.map((item: any, index: number) =>
+          hydrateHistoryItem(
+            normalizeHistoryItem(
+              item,
+              `${normalizedReview.id}-received-${index}`,
+            ),
+          ),
         );
-        const givenReviews = (response.data.givenReviews || []).map(
-          hydrateHistoryItem,
+        const givenReviews = givenSource.map((item: any, index: number) =>
+          hydrateHistoryItem(
+            normalizeHistoryItem(item, `${normalizedReview.id}-given-${index}`),
+          ),
         );
 
         setDetail({
           review: {
-            ...response.data.review,
-            userInfo: {
-              ...response.data.review.userInfo,
-              avatar:
-                resolveApiAssetUrl(response.data.review.userInfo?.avatar) || "",
-            },
-            reviewer: response.data.review.reviewer
+            ...normalizedReview,
+            reviewer: payload.review.reviewer
               ? {
-                  ...response.data.review.reviewer,
+                  ...payload.review.reviewer,
                   avatar:
-                    resolveApiAssetUrl(response.data.review.reviewer.avatar) ||
-                    "",
+                    resolveApiAssetUrl(payload.review.reviewer.avatar) || "",
                 }
               : undefined,
           },
@@ -136,7 +194,7 @@ export const ReviewsModal = ({
         });
       } else {
         setDetail({
-          review,
+          review: normalizeReview(review),
           receivedReviews: buildFallbackHistory("Received"),
           givenReviews: buildFallbackHistory("Given"),
         });
@@ -145,7 +203,7 @@ export const ReviewsModal = ({
       console.error("Failed to load review detail:", error);
       if (review) {
         setDetail({
-          review,
+          review: normalizeReview(review),
           receivedReviews: buildFallbackHistory("Received"),
           givenReviews: buildFallbackHistory("Given"),
         });
@@ -167,45 +225,136 @@ export const ReviewsModal = ({
   }, [isOpen, review?.id, loadDetail]);
 
   useEffect(() => {
-    if (detail?.review) {
-      setEditComment(detail.review.comment);
+    if (!isOpen) {
+      setSelectedItemId(null);
       return;
     }
 
-    if (review) {
-      setEditComment(review.comment);
+    const activeItems =
+      activeTab === "Received"
+        ? detail?.receivedReviews || []
+        : detail?.givenReviews || [];
+
+    if (activeItems.length === 0) {
+      setSelectedItemId(review?.id || null);
+      return;
     }
-  }, [detail, review]);
+
+    setSelectedItemId((prev) => {
+      if (prev && activeItems.some((item) => item.id === prev)) {
+        return prev;
+      }
+
+      return activeItems[0].id;
+    });
+  }, [activeTab, detail, isOpen, review?.id]);
+
+  const currentReview = detail?.review || review;
+  const currentList =
+    activeTab === "Received"
+      ? detail?.receivedReviews || []
+      : detail?.givenReviews || [];
+
+  const selectedListItem =
+    currentList.find((item) => item.id === selectedItemId) || null;
+
+  const buildReviewFromHistoryItem = useCallback(
+    (item: ReviewHistoryItem): Review => ({
+      id: item.id,
+      userType: item.userType,
+      userInfo: {
+        name: item.userName,
+        id: "",
+        avatar: item.avatar,
+      },
+      reviewDate: item.date,
+      visible: item.visible,
+      isFlagged: item.isFlagged,
+      rating: item.rating,
+      comment: item.comment,
+      tags: item.tags,
+      status: item.status,
+    }),
+    [],
+  );
+
+  const activeReviewTarget = selectedListItem
+    ? buildReviewFromHistoryItem(selectedListItem)
+    : currentReview;
+
+  useEffect(() => {
+    if (isEditing) {
+      setEditComment(activeReviewTarget?.comment || "");
+    }
+  }, [activeReviewTarget, isEditing]);
+
+  const applyReviewUpdateLocally = useCallback(
+    (patch: Partial<Review>) => {
+      const targetId = activeReviewTarget?.id;
+      if (!targetId) return;
+
+      const patchHistoryList = (list: ReviewHistoryItem[]) =>
+        list.map((item) =>
+          item.id === targetId
+            ? {
+                ...item,
+                ...(patch.comment !== undefined
+                  ? { comment: patch.comment }
+                  : {}),
+                ...(patch.isFlagged !== undefined
+                  ? { isFlagged: patch.isFlagged }
+                  : {}),
+              }
+            : item,
+        );
+
+      setDetail((prev) => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          review: {
+            ...prev.review,
+            ...(prev.review.id === targetId ? patch : {}),
+          },
+          receivedReviews: patchHistoryList(prev.receivedReviews),
+          givenReviews: patchHistoryList(prev.givenReviews),
+        };
+      });
+    },
+    [activeReviewTarget],
+  );
 
   if (!isOpen || !review) return null;
 
-  const currentReview = detail?.review || review;
-
   const handleFlagToggle = async () => {
-    await onUpdate({
-      ...currentReview,
-      isFlagged: !currentReview.isFlagged,
-    });
-    await loadDetail();
+    if (!activeReviewTarget) return;
+
+    const nextFlagged = !activeReviewTarget.isFlagged;
+    const nextReview = {
+      ...activeReviewTarget,
+      isFlagged: nextFlagged,
+    };
+
+    applyReviewUpdateLocally({ isFlagged: nextFlagged });
+    await onUpdate(nextReview);
   };
 
   const handleSaveEdit = async () => {
-    await onUpdate({
-      ...currentReview,
+    if (!activeReviewTarget) return;
+
+    const nextReview = {
+      ...activeReviewTarget,
       comment: editComment,
-    });
+    };
+
+    applyReviewUpdateLocally({ comment: editComment });
+    await onUpdate(nextReview);
     setIsEditing(false);
-    await loadDetail();
   };
 
   const handleBackdropClick = (e: React.MouseEvent) => {
     if (e.target === e.currentTarget) onClose();
   };
-
-  const currentList =
-    activeTab === "Received"
-      ? detail?.receivedReviews || []
-      : detail?.givenReviews || [];
 
   return (
     <div
@@ -427,136 +576,135 @@ export const ReviewsModal = ({
               No {activeTab.toLowerCase()} reviews found.
             </div>
           ) : (
-            currentList.map((item, idx) => (
-              <div key={idx} className="rmo-review-card">
-                <div className="rmo-card-header">
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                    }}
-                  >
-                    {[...Array(5)].map((_, i) => (
-                      <Star
-                        key={i}
-                        size={18}
-                        fill={i < item.rating ? "#FBBF24" : "none"}
-                        color="#FBBF24"
-                      />
-                    ))}
-                    <span
-                      style={{
-                        marginLeft: "8px",
-                        fontWeight: "900",
-                        fontSize: "18px",
-                        color: "#111827",
-                      }}
-                    >
-                      {item.rating.toFixed(1)}
-                    </span>
-                  </div>
-                  <div
-                    style={{
-                      width: "22px",
-                      height: "22px",
-                      borderRadius: "50%",
-                      border: "2px solid #38AC57",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                  >
-                    <div
-                      style={{
-                        width: "12px",
-                        height: "12px",
-                        borderRadius: "50%",
-                        backgroundColor: "#38AC57",
-                      }}
-                    ></div>
-                  </div>
-                </div>
+            currentList.map((item) => {
+              const isSelected = item.id === selectedItemId;
 
-                <div className="rmo-user-meta">
-                  <UserAvatar
-                    src={item.avatar}
-                    name={item.userName}
-                    rating={item.rating}
-                    size={56}
-                    showBadge={true}
-                  />
-                  <div style={{ flex: 1, textAlign: "inherit" }}>
+              return (
+                <div
+                  key={item.id}
+                  className="rmo-review-card"
+                  onClick={() => {
+                    setSelectedItemId(item.id);
+                    setIsEditing(false);
+                  }}
+                  style={{
+                    cursor: "pointer",
+                    borderColor: isSelected ? "#38AC57" : "#e5e7eb",
+                    boxShadow: isSelected
+                      ? "0 0 0 3px rgba(56, 172, 87, 0.12)"
+                      : "none",
+                  }}
+                >
+                  <div className="rmo-card-header">
                     <div
                       style={{
                         display: "flex",
                         alignItems: "center",
-                        gap: "8px",
-                        flexWrap: "wrap",
-                        justifyContent: "inherit",
+                        gap: "4px",
                       }}
                     >
-                      <span style={{ fontWeight: "800", fontSize: "16px" }}>
-                        {item.userName}
-                      </span>
+                      {[...Array(5)].map((_, i) => (
+                        <Star
+                          key={i}
+                          size={18}
+                          fill={i < item.rating ? "#FBBF24" : "none"}
+                          color="#FBBF24"
+                        />
+                      ))}
                       <span
                         style={{
-                          fontSize: "10px",
-                          color: "#38AC57",
-                          backgroundColor: "#eef7f0",
-                          padding: "2px 10px",
-                          borderRadius: "8px",
-                          fontWeight: "800",
-                          textTransform: "uppercase",
+                          marginLeft: "8px",
+                          fontWeight: "900",
+                          fontSize: "18px",
+                          color: "#111827",
                         }}
                       >
-                        {item.userType}
+                        {item.rating.toFixed(1)}
                       </span>
                     </div>
-                    <span
+                    <div
                       style={{
-                        fontSize: "12px",
-                        color: "#9CA3AF",
-                        fontWeight: "600",
+                        width: "22px",
+                        height: "22px",
+                        borderRadius: "50%",
+                        border: `2px solid ${isSelected ? "#38AC57" : "#D1D5DB"}`,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
                       }}
                     >
-                      {item.date}
-                    </span>
+                      <div
+                        style={{
+                          width: "12px",
+                          height: "12px",
+                          borderRadius: "50%",
+                          backgroundColor: isSelected
+                            ? "#38AC57"
+                            : "transparent",
+                        }}
+                      ></div>
+                    </div>
                   </div>
-                  <div
-                    style={{
-                      backgroundColor: "#38AC57",
-                      color: "white",
-                      padding: "6px 20px",
-                      borderRadius: "100px",
-                      fontSize: "12px",
-                      fontWeight: "800",
-                    }}
-                  >
-                    {item.status}
-                  </div>
-                </div>
 
-                {isEditing && item.id === currentReview.id ? (
-                  <textarea
-                    value={editComment}
-                    onChange={(e) => setEditComment(e.target.value)}
-                    placeholder="Update review comment..."
-                    style={{
-                      width: "100%",
-                      backgroundColor: "white",
-                      border: "1px solid #e5e7eb",
-                      color: "#111827",
-                      borderRadius: "16px",
-                      padding: "1.25rem",
-                      fontSize: "14px",
-                      minHeight: "120px",
-                      marginBottom: "1.5rem",
-                      outline: "none",
-                      lineHeight: "1.6",
-                    }}
-                  />
-                ) : (
+                  <div className="rmo-user-meta">
+                    <UserAvatar
+                      src={item.avatar}
+                      name={item.userName}
+                      rating={item.rating}
+                      size={56}
+                      showBadge={true}
+                    />
+                    <div style={{ flex: 1, textAlign: "inherit" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          flexWrap: "wrap",
+                          justifyContent: "inherit",
+                        }}
+                      >
+                        <span style={{ fontWeight: "800", fontSize: "16px" }}>
+                          {item.userName}
+                        </span>
+                        <span
+                          style={{
+                            fontSize: "10px",
+                            color: "#38AC57",
+                            backgroundColor: "#eef7f0",
+                            padding: "2px 10px",
+                            borderRadius: "8px",
+                            fontWeight: "800",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {item.userType}
+                        </span>
+                      </div>
+                      <span
+                        style={{
+                          fontSize: "12px",
+                          color: "#9CA3AF",
+                          fontWeight: "600",
+                        }}
+                      >
+                        {item.date}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        backgroundColor: "#38AC57",
+                        color: "white",
+                        padding: "6px 20px",
+                        borderRadius: "100px",
+                        fontSize: "12px",
+                        fontWeight: "800",
+                      }}
+                    >
+                      {item.status}
+                    </div>
+                  </div>
+
                   <p
                     style={{
                       margin: "0 0 1.5rem 0",
@@ -568,28 +716,60 @@ export const ReviewsModal = ({
                   >
                     {item.comment}
                   </p>
-                )}
 
-                <div className="rmo-tags-container">
-                  {item.tags.map((tag: string, tIdx: number) => (
-                    <span
-                      key={tIdx}
-                      style={{
-                        backgroundColor: "#fff",
-                        color: "#38AC57",
-                        border: "1px solid #38AC57",
-                        padding: "6px 14px",
-                        borderRadius: "10px",
-                        fontSize: "12px",
-                        fontWeight: "800",
-                      }}
-                    >
-                      {tag}
-                    </span>
-                  ))}
+                  <div className="rmo-tags-container">
+                    {item.tags.map((tag: string, tIdx: number) => (
+                      <span
+                        key={tIdx}
+                        style={{
+                          backgroundColor: "#fff",
+                          color: "#38AC57",
+                          border: "1px solid #38AC57",
+                          padding: "6px 14px",
+                          borderRadius: "10px",
+                          fontSize: "12px",
+                          fontWeight: "800",
+                        }}
+                      >
+                        {tag}
+                      </span>
+                    ))}
+                  </div>
                 </div>
+              );
+            })
+          )}
+
+          {isEditing && !isLoading && (
+            <div className="rmo-review-card" style={{ marginTop: "0.5rem" }}>
+              <div
+                style={{
+                  marginBottom: "0.75rem",
+                  fontWeight: "800",
+                  fontSize: "14px",
+                  color: "#111827",
+                }}
+              >
+                Edit selected review comment
               </div>
-            ))
+              <textarea
+                value={editComment}
+                onChange={(e) => setEditComment(e.target.value)}
+                placeholder="Update review comment..."
+                style={{
+                  width: "100%",
+                  backgroundColor: "white",
+                  border: "1px solid #e5e7eb",
+                  color: "#111827",
+                  borderRadius: "16px",
+                  padding: "1.25rem",
+                  fontSize: "14px",
+                  minHeight: "120px",
+                  outline: "none",
+                  lineHeight: "1.6",
+                }}
+              />
+            </div>
           )}
         </div>
 
@@ -603,7 +783,7 @@ export const ReviewsModal = ({
               color: "#374151",
             }}
           >
-            {currentReview.isFlagged ? "Unflag Review" : "Flag Review"}
+            {activeReviewTarget?.isFlagged ? "Unflag Review" : "Flag Review"}
           </button>
           {isEditing ? (
             <button
@@ -644,68 +824,92 @@ export const ReviewsModal = ({
           <div
             style={{
               position: "fixed",
-              bottom: "2rem",
-              right: "2rem",
-              backgroundColor: "white",
-              padding: "1.5rem 2rem",
-              borderRadius: "100px",
-              boxShadow: "0 20px 25px -5px rgba(0,0,0,0.1)",
-              border: "1px solid #e5e7eb",
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: "rgba(0,0,0,0.35)",
               display: "flex",
               alignItems: "center",
-              gap: "1rem",
+              justifyContent: "center",
               zIndex: 1100,
-              color: "#111827",
             }}
           >
             <div
               style={{
-                width: "40px",
-                height: "40px",
-                backgroundColor: "#111827",
-                borderRadius: "50%",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "white",
+                width: "90%",
+                maxWidth: "420px",
+                backgroundColor: "white",
+                borderRadius: "20px",
+                border: "1px solid #e5e7eb",
+                boxShadow: "0 20px 25px -5px rgba(0,0,0,0.15)",
+                padding: "1.5rem",
               }}
             >
-              <span style={{ fontSize: "20px", fontWeight: "bold" }}>i</span>
+              <h3
+                style={{
+                  margin: "0 0 0.5rem 0",
+                  color: "#111827",
+                  fontSize: "1.1rem",
+                  fontWeight: "900",
+                }}
+              >
+                Delete Review Permanently?
+              </h3>
+              <p
+                style={{
+                  margin: "0 0 1.25rem 0",
+                  color: "#6B7280",
+                  fontSize: "0.9rem",
+                }}
+              >
+                This action cannot be undone.
+              </p>
+              <div style={{ display: "flex", gap: "0.75rem" }}>
+                <button
+                  onClick={() => setShowDeleteConfirm(false)}
+                  style={{
+                    flex: 1,
+                    border: "1px solid #e5e7eb",
+                    background: "white",
+                    cursor: "pointer",
+                    fontWeight: "800",
+                    color: "#374151",
+                    fontSize: "14px",
+                    borderRadius: "12px",
+                    padding: "0.75rem",
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    if (activeReviewTarget) {
+                      try {
+                        await onDelete(activeReviewTarget.id);
+                        setShowDeleteConfirm(false);
+                        onClose();
+                      } catch (error) {
+                        console.error("Failed to delete review:", error);
+                      }
+                    }
+                  }}
+                  style={{
+                    flex: 1,
+                    border: "none",
+                    background: "#EF4444",
+                    cursor: "pointer",
+                    fontWeight: "800",
+                    color: "white",
+                    fontSize: "14px",
+                    borderRadius: "12px",
+                    padding: "0.75rem",
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
             </div>
-            <span style={{ fontWeight: "700", fontSize: "16px" }}>
-              Review has been deleted
-            </span>
-            <button
-              onClick={() => {
-                if (currentReview) {
-                  onDelete(currentReview.id);
-                  setShowDeleteConfirm(false);
-                  onClose();
-                }
-              }}
-              style={{
-                border: "none",
-                background: "none",
-                cursor: "pointer",
-                fontWeight: "800",
-                color: "#38AC57",
-                fontSize: "14px",
-                marginLeft: "1rem",
-              }}
-            >
-              Undo
-            </button>
-            <button
-              onClick={() => setShowDeleteConfirm(false)}
-              style={{
-                border: "none",
-                background: "none",
-                cursor: "pointer",
-                color: "#9CA3AF",
-              }}
-            >
-              <X size={20} />
-            </button>
           </div>
         )}
       </div>

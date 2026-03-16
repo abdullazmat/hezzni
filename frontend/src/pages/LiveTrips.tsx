@@ -386,23 +386,38 @@ export const LiveTrips = () => {
     value: String(serviceType.id),
   }));
 
+  const tripTotals = trips.reduce(
+    (accumulator, trip) => {
+      const normalizedStatus = trip.status.toLowerCase();
+      accumulator.total += 1;
+      if (normalizedStatus === "completed") {
+        accumulator.completed += 1;
+      }
+      if (normalizedStatus === "cancelled") {
+        accumulator.cancelled += 1;
+      }
+      return accumulator;
+    },
+    { total: 0, completed: 0, cancelled: 0 },
+  );
+
   const statsCards = [
     {
       id: "all" as const,
       label: "Total Archived",
-      value: String(stats.totalArchived).padStart(2, "0"),
+      value: String(tripTotals.total).padStart(2, "0"),
       icon: totalArchivedIcon,
     },
     {
       id: "completed" as const,
       label: "Completed",
-      value: String(stats.completed).padStart(2, "0"),
+      value: String(tripTotals.completed).padStart(2, "0"),
       icon: completedIcon,
     },
     {
       id: "cancelled" as const,
       label: "Cancelled",
-      value: String(stats.cancelled).padStart(2, "0"),
+      value: String(tripTotals.cancelled).padStart(2, "0"),
       icon: cancelledIcon,
     },
     {

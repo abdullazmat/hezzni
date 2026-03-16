@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { ArrowLeft, X } from "lucide-react";
 import { UserAvatar } from "../components/UserAvatar";
 
@@ -47,6 +48,21 @@ interface ModalProps {
   onProcessRefund?: () => void;
   onViewHistory?: () => void;
   onBack?: () => void;
+  onUpdateRefundStatus?: (
+    transaction: any,
+    refundStatus: string,
+    adminNotes: string,
+  ) => void;
+  onProcessRefundAction?: (
+    transaction: any,
+    payload: {
+      refundAmount: string;
+      refundReason: string;
+      refundStatus: string;
+      adminNotes: string;
+    },
+  ) => void;
+  onDownloadReceipt?: (transaction: any) => void;
 }
 
 // --- Responsive Styles ---
@@ -254,7 +270,7 @@ export const TransactionDetailsModal = ({
           <InfoItem label="Trip ID" value={transaction.tripId} />
           <InfoItem
             label="Amount"
-            value={`${transaction.amount.replace(" MAD", "")}.00 MAD`}
+            value={`${String(transaction.amount || "0").replace(" MAD", "")} ${transaction.currency || "MAD"}`}
           />
 
           <InfoItem
@@ -331,6 +347,7 @@ export const TransactionHistoryModal = ({
   onClose,
   transaction,
   onProcessRefund,
+  onDownloadReceipt,
 }: ModalProps) => {
   const historyItems = [
     {
@@ -668,6 +685,7 @@ export const TransactionHistoryModal = ({
           }}
         >
           <button
+            onClick={() => onDownloadReceipt?.(transaction)}
             style={{
               flex: 1,
               padding: "0.85rem",
@@ -697,6 +715,7 @@ export const TransactionHistoryModal = ({
             Process Refund
           </button>
           <button
+            onClick={() => onDownloadReceipt?.(transaction)}
             style={{
               flex: 1,
               padding: "0.85rem",
@@ -718,7 +737,27 @@ export const TransactionHistoryModal = ({
 };
 
 // --- Process Refund Modal ---
-export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
+export const ProcessRefundModal = ({
+  onClose,
+  transaction,
+  onUpdateRefundStatus,
+  onProcessRefundAction,
+  onDownloadReceipt,
+}: ModalProps) => {
+  const [refundAmount, setRefundAmount] = useState(
+    String(transaction.amount || ""),
+  );
+  const [refundReason, setRefundReason] = useState("Other");
+  const [refundStatus, setRefundStatus] = useState(
+    transaction.refundStatus || "Refund Pending",
+  );
+  const [adminNotes, setAdminNotes] = useState("");
+
+  useEffect(() => {
+    setRefundAmount(String(transaction.amount || ""));
+    setRefundStatus(transaction.refundStatus || "Refund Pending");
+  }, [transaction]);
+
   return (
     <ModalOverlay onClose={onClose}>
       <div
@@ -779,7 +818,9 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
             >
               Payment ID:
             </div>
-            <div style={{ fontWeight: "700", fontSize: "0.9rem" }}>PAY001</div>
+            <div style={{ fontWeight: "700", fontSize: "0.9rem" }}>
+              {transaction.id}
+            </div>
           </div>
           <div>
             <div
@@ -792,7 +833,7 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
               Customer:
             </div>
             <div style={{ fontWeight: "700", fontSize: "0.9rem" }}>
-              Nadia Lahlou
+              {transaction.rider || transaction.passengerName || "N/A"}
             </div>
           </div>
           <div>
@@ -806,7 +847,7 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
               Original Amount:
             </div>
             <div style={{ fontWeight: "700", fontSize: "0.9rem" }}>
-              75.50 MAD
+              {transaction.amount} {transaction.currency || "MAD"}
             </div>
           </div>
           <div>
@@ -832,7 +873,7 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
               Transaction Date & Time:
             </div>
             <div style={{ fontWeight: "700", fontSize: "0.9rem" }}>
-              2025-01-10 09:30
+              {transaction.date || transaction.createdAt || "N/A"}
             </div>
           </div>
           <div>
@@ -906,7 +947,7 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
                 color: "#6b7280",
               }}
             >
-              TXN_1751555882063
+              {transaction.transactionId || transaction.id}
             </div>
           </div>
           <div>
@@ -941,8 +982,9 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
             </div>
             <div
               style={{
-                backgroundColor: "#fee2e2",
-                color: "#ef4444",
+                backgroundColor:
+                  refundStatus === "Refunded" ? "#eef7f0" : "#f3f4f6",
+                color: refundStatus === "Refunded" ? "#2d8a46" : "#4b5563",
                 padding: "0.2rem 0.6rem",
                 borderRadius: "0.4rem",
                 fontSize: "0.7rem",
@@ -950,7 +992,7 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
                 display: "inline-block",
               }}
             >
-              Expired
+              {refundStatus}
             </div>
           </div>
         </div>
@@ -1001,6 +1043,8 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
             <input
               type="text"
               placeholder="Type Here"
+              value={refundAmount}
+              onChange={(e) => setRefundAmount(e.target.value)}
               style={{
                 width: "100%",
                 padding: "0.85rem",
@@ -1024,6 +1068,8 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
               Refund Reason
             </label>
             <select
+              value={refundReason}
+              onChange={(e) => setRefundReason(e.target.value)}
               style={{
                 width: "100%",
                 padding: "0.85rem",
@@ -1034,6 +1080,10 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
                 appearance: "none",
               }}
             >
+              <option>Trip Issue</option>
+              <option>Duplicate Charge</option>
+              <option>Service Quality</option>
+              <option>Driver No-show</option>
               <option>Other</option>
             </select>
           </div>
@@ -1049,6 +1099,8 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
               Status
             </label>
             <select
+              value={refundStatus}
+              onChange={(e) => setRefundStatus(e.target.value)}
               style={{
                 width: "100%",
                 padding: "0.85rem",
@@ -1059,7 +1111,11 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
                 appearance: "none",
               }}
             >
-              <option>Active</option>
+              <option>Refund Pending</option>
+              <option>Under Review</option>
+              <option>Refunded</option>
+              <option>Refund Failed</option>
+              <option>No Refund</option>
             </select>
           </div>
         </div>
@@ -1077,6 +1133,8 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
           </label>
           <textarea
             placeholder="Type Here"
+            value={adminNotes}
+            onChange={(e) => setAdminNotes(e.target.value)}
             style={{
               width: "100%",
               padding: "1rem",
@@ -1093,6 +1151,9 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
 
         <div className="pmo-footer-actions">
           <button
+            onClick={() =>
+              onUpdateRefundStatus?.(transaction, refundStatus, adminNotes)
+            }
             style={{
               flex: 1,
               padding: "1rem",
@@ -1107,7 +1168,14 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
             Update Status
           </button>
           <button
-            onClick={onClose}
+            onClick={() => {
+              onProcessRefundAction?.(transaction, {
+                refundAmount,
+                refundReason,
+                refundStatus,
+                adminNotes,
+              });
+            }}
             style={{
               flex: 1,
               padding: "1rem",
@@ -1123,6 +1191,7 @@ export const ProcessRefundModal = ({ onClose, transaction }: ModalProps) => {
             Process Refund
           </button>
           <button
+            onClick={() => onDownloadReceipt?.(transaction)}
             style={{
               flex: 1,
               padding: "1rem",

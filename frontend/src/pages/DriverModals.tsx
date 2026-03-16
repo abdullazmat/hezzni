@@ -10,6 +10,13 @@ import {
   suspendDriverApi,
   updateDriverPreferencesApi,
 } from "../services/api";
+import {
+  defaultCategoryForVehicleType,
+  getAvailableCategoriesForVehicleType,
+  getDriverServiceCategory,
+  saveDriverServiceCategory,
+  type DriverServiceCategory,
+} from "../utils/driverServiceCategory";
 
 // --- Types ---
 // You might want to move these shared types to a common file
@@ -18,6 +25,23 @@ interface ModalProps {
   driver?: any; // Replace with proper Driver type
   trip?: any; // Replace with proper Trip type
   onSuccess?: () => void;
+}
+
+interface ChangeCategoryModalProps {
+  onClose: () => void;
+  driver?: any;
+  onSuccess?: (category: DriverServiceCategory) => void;
+}
+
+type AddDriverToastType = "success" | "error" | "info";
+
+interface AddDriverModalProps {
+  onClose: () => void;
+  onToast?: (payload: {
+    type: AddDriverToastType;
+    title: string;
+    message?: string;
+  }) => void;
 }
 
 // --- Icons ---
@@ -67,32 +91,55 @@ const VehicleIcon = ({
 
 // --- Change Hezzni Service Category Modal ---
 
-export const ChangeCategoryModal = ({ onClose, driver }: ModalProps) => {
-  const [selectedCategory, setSelectedCategory] = useState(
-    driver?.vehicleType === "Motorcycle" ? "Motorcycle" : "Hezzni Standard",
-  );
+export const ChangeCategoryModal = ({
+  onClose,
+  driver,
+  onSuccess,
+}: ChangeCategoryModalProps) => {
+  const [selectedCategory, setSelectedCategory] =
+    useState<DriverServiceCategory>(() =>
+      getDriverServiceCategory(
+        driver?.numericId,
+        driver?.vehicleType,
+        driver?.serviceCategory,
+      ),
+    );
   const [saving, setSaving] = useState(false);
 
-  const categories = [
-    {
-      id: "Hezzni Comfort",
-      label: "Hezzni Comfort",
+  const categoryMeta: Record<
+    DriverServiceCategory,
+    { desc: string; icon: string }
+  > = {
+    "Hezzni Comfort": {
       desc: "Premium rides with higher fares",
       icon: "Car",
     },
-    {
-      id: "Hezzni Standard",
-      label: "Hezzni Standard",
+    "Hezzni Standard": {
       desc: "Affordable everyday rides",
       icon: "Car",
     },
-    {
-      id: "Hezzni XL",
-      label: "Hezzni XL",
+    "Hezzni XL": {
       desc: "For group trips and extra space",
       icon: "Car",
     },
-  ];
+    "Hezzni Moto": {
+      desc: "Motorcycle service",
+      icon: "Motorcycle",
+    },
+    "Hezzni Taxi": {
+      desc: "Taxi metered service",
+      icon: "Car",
+    },
+  };
+
+  const categories = getAvailableCategoriesForVehicleType(
+    driver?.vehicleType,
+  ).map((id) => ({
+    id,
+    label: id,
+    desc: categoryMeta[id].desc,
+    icon: categoryMeta[id].icon,
+  }));
 
   const handleUpdate = async () => {
     if (!driver?.numericId) return;
@@ -101,16 +148,26 @@ export const ChangeCategoryModal = ({ onClose, driver }: ModalProps) => {
       "Hezzni Comfort": 1,
       "Hezzni Standard": 1,
       "Hezzni XL": 1,
-      Motorcycle: 2,
+      "Hezzni Moto": 2,
+      "Hezzni Taxi": 3,
     };
-    await updateDriverPreferencesApi(driver.numericId, {
-      serviceTypeId: serviceTypeMap[selectedCategory] || 1,
-      carRideStatus: selectedCategory !== "Motorcycle" ? "active" : "inactive",
-      motorcycleStatus:
-        selectedCategory === "Motorcycle" ? "active" : "inactive",
-    });
-    setSaving(false);
-    onClose();
+    try {
+      await updateDriverPreferencesApi(driver.numericId, {
+        serviceTypeId:
+          serviceTypeMap[selectedCategory] ||
+          serviceTypeMap[defaultCategoryForVehicleType(driver?.vehicleType)],
+        carRideStatus:
+          selectedCategory !== "Hezzni Moto" ? "active" : "inactive",
+        motorcycleStatus:
+          selectedCategory === "Hezzni Moto" ? "active" : "inactive",
+      });
+
+      saveDriverServiceCategory(driver.numericId, selectedCategory);
+      onSuccess?.(selectedCategory);
+      onClose();
+    } finally {
+      setSaving(false);
+    }
   };
 
   // If motorcycle, maybe show motorcycle only or mixed?
@@ -976,7 +1033,7 @@ export const TripSummaryModal = ({ onClose, trip }: ModalProps) => {
 
 // --- Add New Driver Modal ---
 
-export const AddDriverModal = ({ onClose }: ModalProps) => {
+export const AddDriverModal = ({ onClose, onToast }: AddDriverModalProps) => {
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
@@ -994,7 +1051,11 @@ export const AddDriverModal = ({ onClose }: ModalProps) => {
 
   const handleSubmit = async () => {
     if (!formData.name || !formData.phone) {
-      alert("Name and Phone are required");
+      onToast?.({
+        type: "error",
+        title: "Missing required fields",
+        message: "Name and phone are required.",
+      });
       return;
     }
 
@@ -1007,14 +1068,26 @@ export const AddDriverModal = ({ onClose }: ModalProps) => {
       });
 
       if (response.ok) {
-        alert("Driver added successfully!");
+        onToast?.({
+          type: "success",
+          title: "Driver added",
+          message: "New driver was created successfully.",
+        });
         onClose();
       } else {
-        alert(response.data?.message || "Failed to add driver");
+        onToast?.({
+          type: "error",
+          title: "Failed to add driver",
+          message: response.data?.message || "Please try again.",
+        });
       }
     } catch (err) {
       console.error(err);
-      alert("Error adding driver");
+      onToast?.({
+        type: "error",
+        title: "Error adding driver",
+        message: "Unexpected error. Please try again.",
+      });
     } finally {
       setLoading(false);
     }

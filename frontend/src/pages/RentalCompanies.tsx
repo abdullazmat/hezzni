@@ -18,7 +18,6 @@ import {
   AddVehicleModal,
 } from "./RentalCompaniesModals";
 import {
-  getRentalCompaniesStatsApi,
   getRentalCompaniesListApi,
   getRentalVehiclesListApi,
   updateRentalVehicleStatusApi,
@@ -183,6 +182,39 @@ const Dropdown = ({
 };
 
 export const RentalCompanies = () => {
+  const LOCAL_ADDED_VEHICLES_KEY = "adminRentalAddedVehicles";
+
+  const loadLocalAddedVehicles = (): VehicleListing[] => {
+    try {
+      const raw = localStorage.getItem(LOCAL_ADDED_VEHICLES_KEY);
+      if (!raw) return [];
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const saveLocalAddedVehicles = (items: VehicleListing[]) => {
+    try {
+      localStorage.setItem(LOCAL_ADDED_VEHICLES_KEY, JSON.stringify(items));
+    } catch {
+      // Ignore storage failures and keep runtime behavior.
+    }
+  };
+
+  const mergeWithLocalVehicles = (apiVehicles: VehicleListing[]) => {
+    const localVehicles = loadLocalAddedVehicles();
+    const merged = [...localVehicles, ...apiVehicles];
+    const seen = new Set<string>();
+    return merged.filter((v) => {
+      const key = `${v.dbId ?? "local"}__${v.id}__${v.licensePlate}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  };
+
   const [viewMode, setViewMode] = useState<"table" | "grid">("table");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -202,29 +234,13 @@ export const RentalCompanies = () => {
   const [vehicles, setVehicles] = useState<VehicleListing[]>([]);
   const [companies, setCompanies] = useState<CompanyRecord[]>([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [apiStats, setApiStats] = useState<{
-    available: number;
-    booked: number;
-    underReview: number;
-    rejected: number;
-  } | null>(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
-  // Fetch stats from API
-  useEffect(() => {
-    getRentalCompaniesStatsApi()
-      .then((res) => {
-        if (res.ok && res.data) {
-          setApiStats(res.data);
-        }
-      })
-      .catch(() => {});
-  }, []);
+  const triggerRefresh = () => setRefreshKey((k) => k + 1);
 
   // Fetch companies from API
   useEffect(() => {
-    const params: Record<string, string> = {};
-    if (searchTerm) params.search = searchTerm;
-    getRentalCompaniesListApi(params)
+    getRentalCompaniesListApi({})
       .then((res) => {
         if (res.ok && Array.isArray(res.data?.companies)) {
           setCompanies(res.data.companies);
@@ -234,36 +250,48 @@ export const RentalCompanies = () => {
         setCompanies([]);
       })
       .catch(() => setCompanies([]));
-  }, [activeTab, searchTerm]);
+  }, [refreshKey]);
 
   // Fetch vehicles from API
   useEffect(() => {
-    const params: Record<string, string> = {};
-    if (searchTerm) params.search = searchTerm;
-    if (activeTab !== "All Listings") params.tab = activeTab;
-
-    getRentalVehiclesListApi(params)
+    getRentalVehiclesListApi({})
       .then((res) => {
         if (res.ok && Array.isArray(res.data?.vehicles)) {
-          setVehicles(res.data.vehicles);
+          setVehicles(mergeWithLocalVehicles(res.data.vehicles));
           return;
         }
 
-        setVehicles([]);
+        setVehicles(mergeWithLocalVehicles([]));
       })
-      .catch(() => setVehicles([]));
-  }, [activeTab, searchTerm]);
+      .catch(() => setVehicles(mergeWithLocalVehicles([])));
+  }, [refreshKey]);
 
-  const available =
-    apiStats?.available ??
-    vehicles.filter((v) => v.status === "Approved").length;
-  const pending =
-    apiStats?.underReview ??
-    vehicles.filter((v) => v.status === "Pending Review").length;
-  const booked = apiStats?.booked ?? 0;
-  const rejected =
-    apiStats?.rejected ??
-    vehicles.filter((v) => v.status === "Rejected").length;
+  const vehiclesForStats = vehicles.filter((v) => {
+    if (selectedCompany && v.company !== selectedCompany.name) return false;
+    return true;
+  });
+
+  const tableAvailable = companies.filter(
+    (c) => c.status === "Available",
+  ).length;
+  const tableBooked = companies.filter((c) => c.status === "Approved").length;
+  const tablePending = companies.filter((c) => c.status === "Pending").length;
+  const tableRejected = companies.filter((c) => c.status === "Rejected").length;
+
+  const gridApproved = vehiclesForStats.filter(
+    (v) => v.status === "Approved",
+  ).length;
+  const gridPending = vehiclesForStats.filter(
+    (v) => v.status === "Pending Review",
+  ).length;
+  const gridRejected = vehiclesForStats.filter(
+    (v) => v.status === "Rejected",
+  ).length;
+
+  const available = viewMode === "table" ? tableAvailable : gridApproved;
+  const pending = viewMode === "table" ? tablePending : gridPending;
+  const booked = viewMode === "table" ? tableBooked : gridApproved;
+  const rejected = viewMode === "table" ? tableRejected : gridRejected;
 
   const statCards = [
     {
@@ -358,18 +386,50 @@ export const RentalCompanies = () => {
     if (selectedVehicle) {
       const dbId = (selectedVehicle as any).dbId;
       if (dbId) {
-        updateRentalVehicleStatusApi(dbId, { status: "AVAILABLE" }).catch(
-          () => {},
+        updateRentalVehicleStatusApi(dbId, { status: "AVAILABLE" })
+          .then(async (res) => {
+            if (!res.ok) {
+              setBanner({ type: "reject", msg: "Failed to approve listing" });
+              setTimeout(() => setBanner(null), 5000);
+              return;
+            }
+
+            triggerRefresh();
+
+            setSelectedVehicle(null);
+            setBanner({
+              type: "approve",
+              msg: "This listing has been approved",
+            });
+            setTimeout(() => setBanner(null), 5000);
+          })
+          .catch(() => {
+            setBanner({ type: "reject", msg: "Failed to approve listing" });
+            setTimeout(() => setBanner(null), 5000);
+          });
+      } else {
+        const updatedVehicle = {
+          ...selectedVehicle,
+          status: "Approved" as const,
+        };
+        const nextVehicles = vehicles.map((v) =>
+          v.id === selectedVehicle.id &&
+          v.licensePlate === selectedVehicle.licensePlate
+            ? updatedVehicle
+            : v,
         );
+        setVehicles(nextVehicles);
+        const nextLocal = loadLocalAddedVehicles().map((v) =>
+          v.id === selectedVehicle.id &&
+          v.licensePlate === selectedVehicle.licensePlate
+            ? updatedVehicle
+            : v,
+        );
+        saveLocalAddedVehicles(nextLocal);
+        setSelectedVehicle(null);
+        setBanner({ type: "approve", msg: "This listing has been approved" });
+        setTimeout(() => setBanner(null), 5000);
       }
-      setVehicles(
-        vehicles.map((v) =>
-          v === selectedVehicle ? { ...v, status: "Approved" } : v,
-        ),
-      );
-      setSelectedVehicle(null);
-      setBanner({ type: "approve", msg: "This listing has been approved" });
-      setTimeout(() => setBanner(null), 5000);
     }
   };
 
@@ -380,16 +440,51 @@ export const RentalCompanies = () => {
         updateRentalVehicleStatusApi(dbId, {
           status: "REJECTED",
           reason: "Rejected by admin",
-        }).catch(() => {});
+        })
+          .then(async (res) => {
+            if (!res.ok) {
+              setBanner({ type: "reject", msg: "Failed to reject listing" });
+              setTimeout(() => setBanner(null), 5000);
+              return;
+            }
+
+            triggerRefresh();
+
+            setSelectedVehicle(null);
+            setBanner({
+              type: "reject",
+              msg: "This listing has been rejected",
+            });
+            setTimeout(() => setBanner(null), 5000);
+          })
+          .catch(() => {
+            setBanner({ type: "reject", msg: "Failed to reject listing" });
+            setTimeout(() => setBanner(null), 5000);
+          });
+      } else {
+        const updatedVehicle = {
+          ...selectedVehicle,
+          status: "Rejected" as const,
+          description: selectedVehicle.description || "Rejected by admin",
+        };
+        const nextVehicles = vehicles.map((v) =>
+          v.id === selectedVehicle.id &&
+          v.licensePlate === selectedVehicle.licensePlate
+            ? updatedVehicle
+            : v,
+        );
+        setVehicles(nextVehicles);
+        const nextLocal = loadLocalAddedVehicles().map((v) =>
+          v.id === selectedVehicle.id &&
+          v.licensePlate === selectedVehicle.licensePlate
+            ? updatedVehicle
+            : v,
+        );
+        saveLocalAddedVehicles(nextLocal);
+        setSelectedVehicle(null);
+        setBanner({ type: "reject", msg: "This listing has been rejected" });
+        setTimeout(() => setBanner(null), 5000);
       }
-      setVehicles(
-        vehicles.map((v) =>
-          v === selectedVehicle ? { ...v, status: "Rejected" } : v,
-        ),
-      );
-      setSelectedVehicle(null);
-      setBanner({ type: "reject", msg: "This listing has been rejected" });
-      setTimeout(() => setBanner(null), 5000);
     }
   };
 
@@ -399,14 +494,25 @@ export const RentalCompanies = () => {
       "id" | "companyLogo" | "submittedDate" | "status"
     >,
   ) => {
+    const effectiveCompany = selectedCompany?.name || newVehicleData.company;
     const newVehicle: VehicleListing = {
       ...newVehicleData,
-      id: `T${Math.floor(Math.random() * 10000)}-N`,
-      companyLogo: "🆕",
+      company: effectiveCompany,
+      id: `LOCAL-${Date.now()}`,
+      companyLogo: (effectiveCompany || "R").charAt(0).toUpperCase(),
+      companyLogoUrl: selectedCompany?.logo || "",
+      companyEmail: selectedCompany?.email || "",
+      companyPhone: selectedCompany?.phone || "",
       submittedDate: new Date().toISOString().slice(0, 16).replace("T", " "),
       status: "Pending Review",
     };
-    setVehicles([newVehicle, ...vehicles]);
+    const nextVehicles = [newVehicle, ...vehicles];
+    setVehicles(nextVehicles);
+    saveLocalAddedVehicles([newVehicle, ...loadLocalAddedVehicles()]);
+    setActiveTab("All Listings");
+    setActiveStat("");
+    setStatusFilter("All");
+    setSearchTerm("");
     setBanner({ type: "approve", msg: "New vehicle submitted successfully" });
     setTimeout(() => setBanner(null), 5000);
   };
@@ -827,7 +933,10 @@ export const RentalCompanies = () => {
           {tabs.map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveTab(tab)}
+              onClick={() => {
+                setActiveTab(tab);
+                setActiveStat("");
+              }}
               style={{
                 padding: "8px 18px",
                 borderRadius: "20px",
@@ -883,9 +992,12 @@ export const RentalCompanies = () => {
                 </p>
               </div>
             ) : (
-              filteredCompanies.map((c, i) => {
+              filteredCompanies.map((c) => {
                 return (
-                  <div key={i} className="rc-table-row">
+                  <div
+                    key={`${c.id ?? c.name}__${c.email}`}
+                    className="rc-table-row"
+                  >
                     <div
                       style={{
                         display: "flex",
@@ -1025,11 +1137,11 @@ export const RentalCompanies = () => {
               </p>
             </div>
           ) : (
-            filteredVehicles.map((v, i) => {
+            filteredVehicles.map((v) => {
               const sc = statusColors[v.status] || statusColors["Pending"];
               return (
                 <div
-                  key={i}
+                  key={`${v.dbId ?? v.id}__${v.company}__${v.submittedDate}`}
                   onClick={() => setSelectedVehicle(v)}
                   style={{
                     backgroundColor: "white",
@@ -1262,6 +1374,8 @@ export const RentalCompanies = () => {
         <AddVehicleModal
           onClose={() => setIsAddModalOpen(false)}
           onAdd={handleAddVehicle}
+          initialCompany={selectedCompany?.name}
+          lockCompany={Boolean(selectedCompany)}
         />
       )}
     </div>

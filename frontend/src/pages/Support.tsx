@@ -20,6 +20,10 @@ import openIcon from "../assets/icons/Scheduled.png";
 import inProgressIcon from "../assets/icons/Today's Bookings.png";
 import resolvedIcon from "../assets/icons/successful payments.png";
 
+const SUPPORT_COMPLAINTS_STORAGE_KEY = "adminSupportComplaintsV1";
+const SUPPORT_ACTIVE_TAB_STORAGE_KEY = "adminSupportActiveTabV1";
+const SUPPORT_SELECTED_CHAT_STORAGE_KEY = "adminSupportSelectedChatIdV1";
+
 // Category Icons
 import rideOrDriverIcon from "../assets/icons/Ride or Driver.png";
 import deliveryIcon from "../assets/icons/Delivery.png";
@@ -75,6 +79,17 @@ interface ComplaintDetail {
   assignedTo?: string;
   internalNotes?: string;
   messages: Message[];
+}
+
+function getUnreadCountForComplaint(complaint: ComplaintDetail): number {
+  // Unread = trailing user messages since the last admin response.
+  let unread = 0;
+  for (let i = complaint.messages.length - 1; i >= 0; i -= 1) {
+    const msg = complaint.messages[i];
+    if (msg.sender === "admin") break;
+    unread += 1;
+  }
+  return unread;
 }
 
 const MOCK_COMPLAINTS: ComplaintDetail[] = [
@@ -161,9 +176,50 @@ const MOCK_COMPLAINTS: ComplaintDetail[] = [
     messages: [],
   },
 ];
+
+function loadStoredComplaints(): ComplaintDetail[] {
+  try {
+    const raw = localStorage.getItem(SUPPORT_COMPLAINTS_STORAGE_KEY);
+    if (!raw) return MOCK_COMPLAINTS;
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed) || parsed.length === 0) return MOCK_COMPLAINTS;
+    return parsed;
+  } catch {
+    return MOCK_COMPLAINTS;
+  }
+}
+
+function saveStoredComplaints(complaints: ComplaintDetail[]) {
+  try {
+    localStorage.setItem(
+      SUPPORT_COMPLAINTS_STORAGE_KEY,
+      JSON.stringify(complaints),
+    );
+  } catch {
+    // Ignore storage errors.
+  }
+}
+
+function loadStoredActiveTab(): "Live Chat" | "Support Tickets" {
+  try {
+    const raw = localStorage.getItem(SUPPORT_ACTIVE_TAB_STORAGE_KEY);
+    return raw === "Live Chat" ? "Live Chat" : "Support Tickets";
+  } catch {
+    return "Support Tickets";
+  }
+}
+
+function loadStoredSelectedChatId(): string | null {
+  try {
+    return localStorage.getItem(SUPPORT_SELECTED_CHAT_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
 export const Support = () => {
   const [activeTab, setActiveTab] = useState<"Live Chat" | "Support Tickets">(
-    "Support Tickets",
+    loadStoredActiveTab,
   );
   const [filterStats, setFilterStats] = useState<string>("all");
   const [ticketSearchQuery, setTicketSearchQuery] = useState("");
@@ -176,8 +232,11 @@ export const Support = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedComplaint, setSelectedComplaint] =
     useState<ComplaintDetail | null>(null);
-  const [complaints, setComplaints] = useState(MOCK_COMPLAINTS);
-  const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
+  const [complaints, setComplaints] =
+    useState<ComplaintDetail[]>(loadStoredComplaints);
+  const [selectedChatId, setSelectedChatId] = useState<string | null>(
+    loadStoredSelectedChatId,
+  );
   const [chatInput, setChatInput] = useState("");
 
   const chatEndRef = useRef<HTMLDivElement>(null);
@@ -185,6 +244,45 @@ export const Support = () => {
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [selectedChatId, complaints]);
+
+  useEffect(() => {
+    saveStoredComplaints(complaints);
+  }, [complaints]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SUPPORT_ACTIVE_TAB_STORAGE_KEY, activeTab);
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    try {
+      if (selectedChatId) {
+        localStorage.setItem(SUPPORT_SELECTED_CHAT_STORAGE_KEY, selectedChatId);
+      } else {
+        localStorage.removeItem(SUPPORT_SELECTED_CHAT_STORAGE_KEY);
+      }
+    } catch {
+      // Ignore storage errors.
+    }
+  }, [selectedChatId]);
+
+  useEffect(() => {
+    if (!complaints.length) {
+      setSelectedChatId(null);
+      return;
+    }
+
+    const selectedStillExists = selectedChatId
+      ? complaints.some((c) => c.id === selectedChatId)
+      : false;
+
+    if (!selectedStillExists && activeTab === "Live Chat") {
+      setSelectedChatId(complaints[0].id);
+    }
+  }, [complaints, selectedChatId, activeTab]);
 
   const stats = useMemo(() => {
     return {
@@ -260,6 +358,71 @@ export const Support = () => {
     setDropdownStatus("All Status");
     setDropdownUser("All Users");
     setDropdownCategory("All Categories");
+  };
+
+  const unreadMessagesCount = complaints.reduce(
+    (sum, complaint) => sum + getUnreadCountForComplaint(complaint),
+    0,
+  );
+
+  const handleExportReport = () => {
+    const headers = [
+      "Ticket ID",
+      "Trip ID",
+      "Status",
+      "Category",
+      "User Name",
+      "User ID",
+      "User Type",
+      "Assigned To",
+      "Date Time",
+      "Message Count",
+      "Last Message",
+      "Description",
+    ];
+
+    const rows = complaints.map((item) => {
+      const lastMessage =
+        item.messages.length > 0
+          ? item.messages[item.messages.length - 1].text
+          : "";
+      return [
+        item.ticketId,
+        item.tripId,
+        item.status,
+        item.category,
+        item.user.name,
+        item.user.id,
+        item.user.type,
+        item.assignedTo || "Unassigned",
+        item.dateTime,
+        String(item.messages.length),
+        lastMessage,
+        item.description,
+      ];
+    });
+
+    const csvEscape = (value: unknown) => {
+      const str = String(value ?? "");
+      if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+        return `"${str.replace(/\"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const csv = [headers, ...rows]
+      .map((row) => row.map((cell) => csvEscape(cell)).join(","))
+      .join("\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `complaints-support-report-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   const handleUpdateComplaint = (updated: ComplaintDetail) => {
@@ -783,111 +946,115 @@ export const Support = () => {
           </div>
         </div>
         <div style={{ flex: 1, overflowY: "auto" }}>
-          {filteredChatSidebar.map((complaint) => (
-            <div
-              key={complaint.id}
-              onClick={() => setSelectedChatId(complaint.id)}
-              style={{
-                padding: "1.25rem 1.5rem",
-                borderBottom: "1px solid #f3f4f6",
-                cursor: "pointer",
-                backgroundColor:
-                  selectedChatId === complaint.id ? "#eef7f0" : "transparent",
-                display: "flex",
-                gap: "1rem",
-                transition: "background-color 0.2s",
-              }}
-            >
-              <div className="relative" style={{ flexShrink: 0 }}>
-                <UserAvatar
-                  src={complaint.user.avatar}
-                  name={complaint.user.name}
-                  size={48}
-                  rating={4.8}
-                  showBadge={true}
-                />
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div
-                  className="flex justify-between"
-                  style={{ marginBottom: "4px" }}
-                >
-                  <span
-                    style={{
-                      fontWeight: "bold",
-                      fontSize: "14px",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {complaint.user.name}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "10px",
-                      color: "#9CA3AF",
-                      flexShrink: 0,
-                    }}
-                  >
-                    2m ago
-                  </span>
+          {filteredChatSidebar.map((complaint) => {
+            const unreadCount = getUnreadCountForComplaint(complaint);
+            return (
+              <div
+                key={complaint.id}
+                onClick={() => setSelectedChatId(complaint.id)}
+                style={{
+                  padding: "1.25rem 1.5rem",
+                  borderBottom: "1px solid #f3f4f6",
+                  cursor: "pointer",
+                  backgroundColor:
+                    selectedChatId === complaint.id ? "#eef7f0" : "transparent",
+                  display: "flex",
+                  gap: "1rem",
+                  transition: "background-color 0.2s",
+                }}
+              >
+                <div className="relative" style={{ flexShrink: 0 }}>
+                  <UserAvatar
+                    src={complaint.user.avatar}
+                    name={complaint.user.name}
+                    size={48}
+                    rating={4.8}
+                    showBadge={true}
+                  />
                 </div>
-                <div className="flex gap-2" style={{ marginBottom: "4px" }}>
-                  <span
-                    style={{
-                      fontSize: "10px",
-                      backgroundColor: "#EFF6FF",
-                      color: "#3B82F6",
-                      padding: "2px 6px",
-                      borderRadius: "4px",
-                    }}
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div
+                    className="flex justify-between"
+                    style={{ marginBottom: "4px" }}
                   >
-                    {complaint.user.type}
-                  </span>
-                  <span style={{ fontSize: "10px", color: "#9CA3AF" }}>
-                    {complaint.user.id}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center">
-                  <p
-                    style={{
-                      margin: 0,
-                      fontSize: "12px",
-                      color: "#6B7280",
-                      whiteSpace: "nowrap",
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                    }}
-                  >
-                    {complaint.messages.length > 0
-                      ? complaint.messages[complaint.messages.length - 1].text
-                      : "Start a conversation"}
-                  </p>
-                  {complaint.status === "New" && (
-                    <div
+                    <span
                       style={{
-                        backgroundColor: "#38AC57",
-                        color: "white",
-                        width: "18px",
-                        height: "18px",
-                        borderRadius: "50%",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        fontSize: "10px",
                         fontWeight: "bold",
-                        flexShrink: 0,
-                        marginLeft: "8px",
+                        fontSize: "14px",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
                       }}
                     >
-                      1
-                    </div>
-                  )}
+                      {complaint.user.name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        color: "#9CA3AF",
+                        flexShrink: 0,
+                      }}
+                    >
+                      2m ago
+                    </span>
+                  </div>
+                  <div className="flex gap-2" style={{ marginBottom: "4px" }}>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        backgroundColor: "#EFF6FF",
+                        color: "#3B82F6",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      {complaint.user.type}
+                    </span>
+                    <span style={{ fontSize: "10px", color: "#9CA3AF" }}>
+                      {complaint.user.id}
+                    </span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <p
+                      style={{
+                        margin: 0,
+                        fontSize: "12px",
+                        color: "#6B7280",
+                        whiteSpace: "nowrap",
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {complaint.messages.length > 0
+                        ? complaint.messages[complaint.messages.length - 1].text
+                        : "Start a conversation"}
+                    </p>
+                    {unreadCount > 0 && (
+                      <div
+                        style={{
+                          backgroundColor: "#38AC57",
+                          color: "white",
+                          minWidth: "18px",
+                          height: "18px",
+                          borderRadius: "10px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "10px",
+                          fontWeight: "bold",
+                          flexShrink: 0,
+                          marginLeft: "8px",
+                          padding: "0 4px",
+                        }}
+                      >
+                        {unreadCount > 9 ? "9+" : unreadCount}
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
 
@@ -1380,7 +1547,7 @@ export const Support = () => {
                 fontWeight: "700",
               }}
             >
-              <span>{stats.total >= 3 ? 3 : stats.total} Unread Messages</span>
+              <span>{unreadMessagesCount} Unread Messages</span>
             </div>
             <div
               style={{
@@ -1401,6 +1568,7 @@ export const Support = () => {
           </div>
           <button
             className="export-btn"
+            onClick={handleExportReport}
             style={{
               padding: "12px 24px",
               fontSize: "14px",
@@ -1437,7 +1605,7 @@ export const Support = () => {
               fontWeight: "800",
             }}
           >
-            3
+            {unreadMessagesCount}
           </span>
         </button>
         <button

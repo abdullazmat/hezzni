@@ -16,10 +16,12 @@ import {
 } from "./PaymentModals";
 import {
   getAdminTransactionsApi,
-  getAdminTransactionStatsApi,
   getAdminTransactionDetailApi,
 } from "../services/api";
 import { useCallback } from "react";
+import { jsPDF } from "jspdf";
+
+const PAYMENT_OVERRIDES_KEY = "adminPaymentTransactionOverridesV1";
 
 // Specialized Icons
 import totalTransactionsIcon from "../assets/icons/total payments.png";
@@ -148,32 +150,68 @@ const FALLBACK_TRANSACTIONS = {
   ],
 } as const;
 
-function buildFallbackStats(
-  activeView: "Trip Payments" | "Wallet Recharges" | "Refund Management",
+function normalizePaymentStatus(status?: string) {
+  const v = String(status || "").toUpperCase();
+  if (v === "COMPLETED" || v === "SUCCESS" || v === "SUCCESSFUL")
+    return "Completed";
+  if (v === "FAILED" || v === "FAIL") return "Failed";
+  if (v === "PENDING" || v === "IN_REVIEW") return "Pending";
+  if (v === "CANCELLED" || v === "CANCELED") return "Cancelled";
+  return status || "Pending";
+}
+
+function normalizeRefundStatus(status?: string) {
+  const v = String(status || "").toUpperCase();
+  if (v === "REFUNDED") return "Refunded";
+  if (v === "REFUND_PENDING" || v === "PENDING_REFUND" || v === "PENDING")
+    return "Refund Pending";
+  if (v === "REFUND_FAILED" || v === "FAILED") return "Refund Failed";
+  if (v === "UNDER_REVIEW" || v === "IN_REVIEW") return "Under Review";
+  if (!v || v === "NONE" || v === "NO_REFUND") return "No Refund";
+  return status || "No Refund";
+}
+
+function readPaymentOverrides(): Record<string, Record<string, string>> {
+  try {
+    const raw = localStorage.getItem(PAYMENT_OVERRIDES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writePaymentOverrides(
+  overrides: Record<string, Record<string, string>>,
 ) {
-  const items = FALLBACK_TRANSACTIONS[activeView];
+  try {
+    localStorage.setItem(PAYMENT_OVERRIDES_KEY, JSON.stringify(overrides));
+  } catch {
+    // Ignore storage failures and continue runtime behavior.
+  }
+}
+
+function applyPaymentOverrides(tx: any) {
+  const overrides = readPaymentOverrides();
+  const key = String(tx.id);
+  const override = overrides[key] || {};
   return {
-    total: items.length,
-    successful: items.filter((item) => item.status === "Completed").length,
-    failed: items.filter((item) => item.status === "Failed").length,
-    pendingRefunds: items.filter(
-      (item) => item.refundStatus === "Refund Pending",
-    ).length,
+    ...tx,
+    ...override,
+    status: normalizePaymentStatus(override.status || tx.status),
+    refundStatus: normalizeRefundStatus(
+      override.refundStatus || tx.refundStatus,
+    ),
   };
 }
 
-function isEmptyStats(stats: {
-  total: number;
-  successful: number;
-  failed: number;
-  pendingRefunds: number;
-}) {
-  return (
-    stats.total === 0 &&
-    stats.successful === 0 &&
-    stats.failed === 0 &&
-    stats.pendingRefunds === 0
-  );
+function csvEscape(value: unknown) {
+  const str = String(value ?? "");
+  if (str.includes(",") || str.includes('"') || str.includes("\n")) {
+    return `"${str.replace(/\"/g, '""')}"`;
+  }
+  return str;
 }
 
 // --- Helper Components ---
@@ -451,27 +489,7 @@ export const Payment = () => {
   >(null);
 
   const [transactions, setTransactions] = useState<any[]>([]);
-  const [stats, setStats] = useState({
-    total: 0,
-    successful: 0,
-    failed: 0,
-    pendingRefunds: 0,
-  });
   const [loading, setLoading] = useState(false);
-
-  const fetchStats = useCallback(async () => {
-    try {
-      const res = await getAdminTransactionStatsApi();
-      if (res.ok && !isEmptyStats(res.data)) {
-        setStats(res.data);
-      } else {
-        setStats(buildFallbackStats(activeView));
-      }
-    } catch (e) {
-      console.error("Failed to fetch transaction stats:", e);
-      setStats(buildFallbackStats(activeView));
-    }
-  }, [activeView]);
 
   const fetchTransactions = useCallback(async () => {
     setLoading(true);
@@ -483,50 +501,88 @@ export const Payment = () => {
       };
 
       const params: any = {
-        search: searchTerm || undefined,
         type: typeMap[activeView],
-        status: statusFilter !== "All" ? statusFilter.toUpperCase() : undefined,
       };
-
-      // If a specific stat card is clicked, override status
-      if (activeStat === "Successful") params.status = "COMPLETED";
-      if (activeStat === "Failed") params.status = "FAILED";
-      // pending refunds might be a different filter if the API supports it,
-      // otherwise we filter client-side or use a dedicated param if added.
 
       const res = await getAdminTransactionsApi(params);
       if (res.ok && res.data.transactions.length > 0) {
-        setTransactions(res.data.transactions);
+        setTransactions(
+          res.data.transactions.map((tx: any) => ({
+            ...applyPaymentOverrides({
+              ...tx,
+              status: normalizePaymentStatus(tx.status),
+              refundStatus: normalizeRefundStatus(tx.refundStatus),
+            }),
+          })),
+        );
       } else {
-        setTransactions([...FALLBACK_TRANSACTIONS[activeView]]);
+        setTransactions(
+          [...FALLBACK_TRANSACTIONS[activeView]].map((tx) =>
+            applyPaymentOverrides(tx),
+          ),
+        );
       }
     } catch (e) {
       console.error("Failed to fetch transactions:", e);
-      setTransactions([...FALLBACK_TRANSACTIONS[activeView]]);
+      setTransactions(
+        [...FALLBACK_TRANSACTIONS[activeView]].map((tx) =>
+          applyPaymentOverrides(tx),
+        ),
+      );
     } finally {
       setLoading(false);
     }
-  }, [activeView, searchTerm, statusFilter, activeStat]);
-
-  useEffect(() => {
-    fetchStats();
-  }, [fetchStats]);
+  }, [activeView]);
 
   useEffect(() => {
     fetchTransactions();
   }, [fetchTransactions]);
 
-  // Filter Logic (Keeping some client-side fallback for filtering not yet in API)
-  const filteredTransactions = (transactions || []).filter((tx) => {
-    // If API already filtered most of it, we just do extra checks here if needed
+  // Filter transactions in UI so cards + table always share the same source of truth.
+  const baseFilteredTransactions = (transactions || []).filter((tx) => {
+    if (
+      searchTerm &&
+      !String(tx.id || "")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase()) &&
+      !String(tx.tripId || tx.accountId || "")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase()) &&
+      !String(tx.rider || tx.passengerName || "")
+        .toLowerCase()
+        .includes(searchTerm.toLowerCase())
+    )
+      return false;
+
     if (
       paymentMethodFilter !== "All" &&
       tx.paymentMethod !== paymentMethodFilter
     )
       return false;
+    if (statusFilter !== "All" && tx.status !== statusFilter) return false;
     if (refundStatusFilter !== "All" && tx.refundStatus !== refundStatusFilter)
       return false;
 
+    return true;
+  });
+
+  const stats = {
+    total: baseFilteredTransactions.length,
+    successful: baseFilteredTransactions.filter(
+      (tx) => tx.status === "Completed",
+    ).length,
+    failed: baseFilteredTransactions.filter((tx) => tx.status === "Failed")
+      .length,
+    pendingRefunds: baseFilteredTransactions.filter(
+      (tx) => tx.refundStatus === "Refund Pending",
+    ).length,
+  };
+
+  const filteredTransactions = baseFilteredTransactions.filter((tx) => {
+    if (activeStat === "Successful") return tx.status === "Completed";
+    if (activeStat === "Failed") return tx.status === "Failed";
+    if (activeStat === "Pending Refunds")
+      return tx.refundStatus === "Refund Pending";
     return true;
   });
 
@@ -557,6 +613,218 @@ export const Payment = () => {
     }
     setActiveModal("details");
   };
+
+  const persistAndPatchTransaction = useCallback(
+    (transactionId: string | number, patch: Record<string, string>) => {
+      const id = String(transactionId);
+      const existing = readPaymentOverrides();
+      const next = {
+        ...existing,
+        [id]: {
+          ...(existing[id] || {}),
+          ...patch,
+        },
+      };
+      writePaymentOverrides(next);
+
+      setTransactions((prev) =>
+        prev.map((tx) => {
+          if (String(tx.id) !== id) return tx;
+          return applyPaymentOverrides({ ...tx, ...patch });
+        }),
+      );
+
+      setSelectedTransaction((prev: any) => {
+        if (!prev || String(prev.id) !== id) return prev;
+        return applyPaymentOverrides({ ...prev, ...patch });
+      });
+    },
+    [],
+  );
+
+  const handleUpdateRefundStatus = useCallback(
+    (transaction: any, refundStatus: string, adminNotes: string) => {
+      persistAndPatchTransaction(transaction.id, {
+        refundStatus,
+        adminNotes,
+      });
+    },
+    [persistAndPatchTransaction],
+  );
+
+  const handleProcessRefund = useCallback(
+    (
+      transaction: any,
+      payload: {
+        refundAmount: string;
+        refundReason: string;
+        refundStatus: string;
+        adminNotes: string;
+      },
+    ) => {
+      persistAndPatchTransaction(transaction.id, {
+        refundStatus: "Refunded",
+        refundAmount: payload.refundAmount,
+        refundReason: payload.refundReason,
+        adminNotes: payload.adminNotes,
+      });
+      setActiveModal(null);
+    },
+    [persistAndPatchTransaction],
+  );
+
+  const handleDownloadReceipt = useCallback((transaction: any) => {
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text("HEZZNI PAYMENT RECEIPT", 15, 20);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(11);
+
+    const rows: Array<[string, string]> = [
+      ["Transaction ID", String(transaction.id || "N/A")],
+      [
+        "Reference",
+        String(
+          transaction.transactionId ||
+            transaction.tripId ||
+            transaction.accountId ||
+            "N/A",
+        ),
+      ],
+      [
+        "Customer",
+        String(transaction.rider || transaction.passengerName || "N/A"),
+      ],
+      [
+        "Amount",
+        `${transaction.amount || "0"} ${transaction.currency || "MAD"}`,
+      ],
+      ["Method", String(transaction.paymentMethod || "N/A")],
+      ["Payment Status", String(transaction.status || "N/A")],
+      ["Refund Status", String(transaction.refundStatus || "No Refund")],
+      ["Date", String(transaction.date || transaction.createdAt || "N/A")],
+    ];
+
+    let y = 35;
+    rows.forEach(([label, value]) => {
+      doc.setFont("helvetica", "bold");
+      doc.text(`${label}:`, 15, y);
+      doc.setFont("helvetica", "normal");
+      const wrapped = doc.splitTextToSize(value, 130);
+      doc.text(wrapped, 60, y);
+      y += Math.max(8, wrapped.length * 6);
+    });
+
+    doc.setFontSize(9);
+    doc.setTextColor(100);
+    doc.text(
+      `Generated: ${new Date().toLocaleString()}`,
+      15,
+      Math.min(285, y + 8),
+    );
+
+    doc.save(`receipt-${transaction.id}.pdf`);
+  }, []);
+
+  const handleExportCsv = useCallback(() => {
+    const headers = [
+      "Transaction ID",
+      "Reference",
+      "Customer",
+      "Amount",
+      "Currency",
+      "Payment Method",
+      "Status",
+      "Refund Status",
+      "Date",
+    ];
+
+    const rows = filteredTransactions.map((tx) => [
+      tx.id,
+      tx.tripId || tx.accountId || tx.transactionId || "",
+      tx.rider || tx.passengerName || "",
+      tx.amount,
+      tx.currency || "MAD",
+      tx.paymentMethod,
+      tx.status,
+      tx.refundStatus || "No Refund",
+      tx.date || tx.createdAt || "",
+    ]);
+
+    const content = [headers, ...rows]
+      .map((row) => row.map((cell) => csvEscape(cell)).join(","))
+      .join("\n");
+
+    const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${activeView.toLowerCase().replace(/\s+/g, "-")}-transactions.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [activeView, filteredTransactions]);
+
+  const handleExportExcel = useCallback(() => {
+    const headers = [
+      "Transaction ID",
+      "Reference",
+      "Customer",
+      "Amount",
+      "Currency",
+      "Payment Method",
+      "Status",
+      "Refund Status",
+      "Date",
+    ];
+
+    const bodyRows = filteredTransactions
+      .map(
+        (tx) =>
+          `<tr>${[
+            tx.id,
+            tx.tripId || tx.accountId || tx.transactionId || "",
+            tx.rider || tx.passengerName || "",
+            tx.amount,
+            tx.currency || "MAD",
+            tx.paymentMethod,
+            tx.status,
+            tx.refundStatus || "No Refund",
+            tx.date || tx.createdAt || "",
+          ]
+            .map((cell) => `<td>${String(cell ?? "")}</td>`)
+            .join("")}</tr>`,
+      )
+      .join("");
+
+    const html = `
+      <html>
+        <head><meta charset="utf-8" /></head>
+        <body>
+          <table border="1">
+            <thead><tr>${headers.map((h) => `<th>${h}</th>`).join("")}</tr></thead>
+            <tbody>${bodyRows}</tbody>
+          </table>
+        </body>
+      </html>
+    `;
+
+    const blob = new Blob([html], {
+      type: "application/vnd.ms-excel;charset=utf-8",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${activeView.toLowerCase().replace(/\s+/g, "-")}-transactions.xls`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [activeView, filteredTransactions]);
 
   return (
     <div
@@ -708,6 +976,7 @@ export const Payment = () => {
         </div>
         <div className="pay-export-buttons">
           <button
+            onClick={handleExportCsv}
             style={{
               display: "flex",
               alignItems: "center",
@@ -725,6 +994,7 @@ export const Payment = () => {
             <Download size={18} /> Export CSV
           </button>
           <button
+            onClick={handleExportExcel}
             style={{
               display: "flex",
               alignItems: "center",
@@ -1146,6 +1416,7 @@ export const Payment = () => {
           onClose={() => setActiveModal(null)}
           onProcessRefund={() => setActiveModal("refund")}
           onViewHistory={() => setActiveModal("history")}
+          onDownloadReceipt={handleDownloadReceipt}
         />
       )}
 
@@ -1155,6 +1426,7 @@ export const Payment = () => {
           onClose={() => setActiveModal(null)}
           onProcessRefund={() => setActiveModal("refund")}
           onBack={() => setActiveModal("details")}
+          onDownloadReceipt={handleDownloadReceipt}
         />
       )}
 
@@ -1163,6 +1435,9 @@ export const Payment = () => {
           transaction={selectedTransaction}
           onClose={() => setActiveModal(null)}
           onBack={() => setActiveModal("details")}
+          onUpdateRefundStatus={handleUpdateRefundStatus}
+          onProcessRefundAction={handleProcessRefund}
+          onDownloadReceipt={handleDownloadReceipt}
         />
       )}
     </div>

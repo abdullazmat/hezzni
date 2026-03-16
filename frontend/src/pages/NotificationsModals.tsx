@@ -14,6 +14,10 @@ interface ModalProps {
   onClose: () => void;
 }
 
+interface NotificationCreationModalProps extends ModalProps {
+  onCreated?: (notification: Notification) => void;
+}
+
 const FALLBACK_CITIES = [
   { id: 1, name: "Casablanca" },
   { id: 2, name: "Rabat" },
@@ -198,7 +202,11 @@ const ModalStyles = () => (
     `}</style>
 );
 
-export const CreateNotificationModal = ({ isOpen, onClose }: ModalProps) => {
+export const CreateNotificationModal = ({
+  isOpen,
+  onClose,
+  onCreated,
+}: NotificationCreationModalProps) => {
   const [step, setStep] = useState(1);
   const [formData, setFormData] = useState({
     title: "",
@@ -260,6 +268,9 @@ export const CreateNotificationModal = ({ isOpen, onClose }: ModalProps) => {
 
   const handleSend = async () => {
     setSending(true);
+    let createdId = `NOT${Date.now()}`;
+    let createdStatus: Notification["status"] = "Sent";
+
     try {
       const filters: Record<string, unknown> = {};
       if (formData.city !== "All City" && formData.city !== "All Cities") {
@@ -279,16 +290,38 @@ export const CreateNotificationModal = ({ isOpen, onClose }: ModalProps) => {
         filters.status = formData.status;
       }
 
-      await createNotificationCampaignApi({
+      const response = await createNotificationCampaignApi({
         title: formData.title,
         message: formData.message,
         targetAudience:
           formData.target === "Passengers" ? "Passengers" : "Drivers",
         filters: Object.keys(filters).length > 0 ? filters : undefined,
       });
+
+      if (response.ok && response.data?.id) {
+        createdId = `NOT${String(response.data.id).padStart(3, "0")}`;
+      }
+
+      if (response.ok && response.data?.status) {
+        createdStatus = response.data.status as Notification["status"];
+      }
     } catch (e) {
       console.error("Failed to create campaign", e);
     } finally {
+      onCreated?.({
+        id: createdId,
+        type: "External",
+        category: formData.target === "Passengers" ? "Passenger" : "Driver",
+        title: formData.title || "New notification",
+        message: formData.message,
+        timestamp: "Just Now",
+        status: createdStatus,
+        readCount: 0,
+        deliveryCount: estimatedReach,
+        target: formData.target,
+        createdAt: new Date().toISOString(),
+        isViewed: false,
+      });
       setSending(false);
       onClose();
     }
@@ -808,7 +841,11 @@ export const CreateNotificationModal = ({ isOpen, onClose }: ModalProps) => {
   );
 };
 
-export const TeamNotificationModal = ({ isOpen, onClose }: ModalProps) => {
+export const TeamNotificationModal = ({
+  isOpen,
+  onClose,
+  onCreated,
+}: NotificationCreationModalProps) => {
   const [sendOption, setSendOption] = useState<"Now" | "Schedule">("Now");
   const departments = [
     "Car Ride",
@@ -835,8 +872,11 @@ export const TeamNotificationModal = ({ isOpen, onClose }: ModalProps) => {
 
   const handleSend = async () => {
     setSending(true);
+    let createdId = `INT${Date.now()}`;
+    let createdStatus: Notification["status"] = "Sent";
+
     try {
-      await createTeamNotificationApi({
+      const response = await createTeamNotificationApi({
         title: formData.title,
         description: formData.message,
         targetDepartments: selectedDepts.length > 0 ? selectedDepts : undefined,
@@ -846,9 +886,31 @@ export const TeamNotificationModal = ({ isOpen, onClose }: ModalProps) => {
             ? new Date(scheduleDate).toISOString()
             : undefined,
       });
+
+      if (response.ok && response.data?.id) {
+        createdId = `INT${String(response.data.id).padStart(3, "0")}`;
+      }
+
+      if (response.ok && response.data?.status) {
+        createdStatus = response.data.status as Notification["status"];
+      }
     } catch (e) {
       console.error("Failed to send team notification", e);
     } finally {
+      onCreated?.({
+        id: createdId,
+        type: "Internal",
+        category: formData.category,
+        title: formData.title || "Team notification",
+        message: formData.message,
+        timestamp: "Just Now",
+        status: createdStatus,
+        readCount: 0,
+        deliveryCount: selectedDepts.length,
+        departments: selectedDepts,
+        createdAt: new Date().toISOString(),
+        isViewed: false,
+      });
       setSending(false);
       onClose();
     }
@@ -1175,8 +1237,43 @@ export const NotificationDetailsModal = ({
   isOpen,
   onClose,
   notification,
-}: ModalProps & { notification: Notification | null }) => {
+  onUpdate,
+  onDelete,
+}: ModalProps & {
+  notification: Notification | null;
+  onUpdate: (notification: Notification) => void;
+  onDelete: (id: string) => void;
+}) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [draftTitle, setDraftTitle] = useState("");
+  const [draftMessage, setDraftMessage] = useState("");
+
+  useEffect(() => {
+    if (!isOpen || !notification) {
+      setIsEditing(false);
+      setShowDeleteConfirm(false);
+      setDraftTitle("");
+      setDraftMessage("");
+      return;
+    }
+
+    setDraftTitle(notification.title);
+    setDraftMessage(notification.message);
+    setIsEditing(false);
+    setShowDeleteConfirm(false);
+  }, [isOpen, notification]);
+
   if (!isOpen || !notification) return null;
+
+  const handleSave = () => {
+    onUpdate({
+      ...notification,
+      title: draftTitle.trim() || notification.title,
+      message: draftMessage.trim() || notification.message,
+    });
+    setIsEditing(false);
+  };
 
   return (
     <div className="modal-overlay" onClick={onClose}>
@@ -1202,16 +1299,34 @@ export const NotificationDetailsModal = ({
 
         <div style={{ display: "flex", flexDirection: "column", gap: "2rem" }}>
           <div>
-            <h3
-              style={{
-                fontSize: "1.5rem",
-                fontWeight: "900",
-                margin: "0 0 1rem 0",
-                color: "#111827",
-              }}
-            >
-              {notification.title}
-            </h3>
+            {isEditing ? (
+              <input
+                value={draftTitle}
+                onChange={(e) => setDraftTitle(e.target.value)}
+                style={{
+                  width: "100%",
+                  borderRadius: "16px",
+                  border: "1.5px solid #E5E7EB",
+                  padding: "1rem 1.1rem",
+                  fontSize: "1.1rem",
+                  fontWeight: "800",
+                  color: "#111827",
+                  outline: "none",
+                  marginBottom: "1rem",
+                }}
+              />
+            ) : (
+              <h3
+                style={{
+                  fontSize: "1.5rem",
+                  fontWeight: "900",
+                  margin: "0 0 1rem 0",
+                  color: "#111827",
+                }}
+              >
+                {notification.title}
+              </h3>
+            )}
             <div style={{ display: "flex", gap: "0.75rem" }}>
               <span
                 className="nom-chip"
@@ -1243,7 +1358,7 @@ export const NotificationDetailsModal = ({
             </label>
             <div
               style={{
-                padding: "1.5rem",
+                padding: isEditing ? 0 : "1.5rem",
                 borderRadius: "24px",
                 border: "1.5px solid #E5E7EB",
                 backgroundColor: "white",
@@ -1254,7 +1369,27 @@ export const NotificationDetailsModal = ({
                 boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)",
               }}
             >
-              {notification.message}
+              {isEditing ? (
+                <textarea
+                  value={draftMessage}
+                  onChange={(e) => setDraftMessage(e.target.value)}
+                  style={{
+                    width: "100%",
+                    minHeight: "180px",
+                    border: "none",
+                    resize: "vertical",
+                    borderRadius: "24px",
+                    padding: "1.5rem",
+                    fontSize: "1rem",
+                    lineHeight: "1.6",
+                    color: "#374151",
+                    outline: "none",
+                    fontWeight: "600",
+                  }}
+                />
+              ) : (
+                notification.message
+              )}
             </div>
           </div>
 
@@ -1363,13 +1498,102 @@ export const NotificationDetailsModal = ({
           </div>
         </div>
 
+        <div className="nom-footer" style={{ marginTop: "3rem" }}>
+          <button
+            className="nom-btn nom-btn-outline"
+            onClick={() => setShowDeleteConfirm(true)}
+            style={{ color: "#EF4444", borderColor: "#FECACA" }}
+          >
+            Delete Notification
+          </button>
+          {isEditing ? (
+            <button className="nom-btn nom-btn-primary" onClick={handleSave}>
+              Save Changes
+            </button>
+          ) : (
+            <button
+              className="nom-btn nom-btn-primary"
+              onClick={() => setIsEditing(true)}
+            >
+              Edit Notification
+            </button>
+          )}
+        </div>
+
         <button
-          className="nom-btn nom-btn-primary"
-          style={{ marginTop: "3rem", width: "100%" }}
+          className="nom-btn nom-btn-outline"
+          style={{ marginTop: "1rem", width: "100%" }}
           onClick={onClose}
         >
-          Dismiss Insights
+          Close
         </button>
+
+        {showDeleteConfirm && (
+          <div
+            style={{
+              position: "fixed",
+              inset: 0,
+              backgroundColor: "rgba(0, 0, 0, 0.35)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              zIndex: 1200,
+              padding: "20px",
+            }}
+          >
+            <div
+              style={{
+                width: "100%",
+                maxWidth: "420px",
+                backgroundColor: "white",
+                borderRadius: "24px",
+                padding: "1.5rem",
+                border: "1px solid #E5E7EB",
+                boxShadow: "0 20px 25px -5px rgba(0,0,0,0.15)",
+              }}
+            >
+              <h3
+                style={{
+                  margin: "0 0 0.5rem 0",
+                  fontSize: "1.1rem",
+                  fontWeight: "900",
+                  color: "#111827",
+                }}
+              >
+                Delete this notification?
+              </h3>
+              <p
+                style={{
+                  margin: "0 0 1.25rem 0",
+                  color: "#6B7280",
+                  fontSize: "0.95rem",
+                  fontWeight: "600",
+                }}
+              >
+                This change will persist after reload.
+              </p>
+              <div style={{ display: "flex", gap: "0.75rem" }}>
+                <button
+                  className="nom-btn nom-btn-outline"
+                  onClick={() => setShowDeleteConfirm(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  className="nom-btn"
+                  onClick={() => onDelete(notification.id)}
+                  style={{
+                    backgroundColor: "#EF4444",
+                    border: "none",
+                    color: "white",
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

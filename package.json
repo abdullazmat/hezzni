@@ -7,6 +7,7 @@
     "build": "npm run build:frontend",
     "build:frontend": "npm --prefix frontend run build",
     "build:backend": "npm --prefix backend run build",
+    "build:plesk": "npm run build && npm run build:backend && node ./scripts/prepare-plesk.mjs",
     "start": "npm --prefix backend start",
     "start:backend": "npm --prefix backend start"
   },

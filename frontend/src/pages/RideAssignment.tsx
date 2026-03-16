@@ -29,7 +29,6 @@ import {
   type RideAssignmentPassengerService,
   type RideAssignmentPreference,
   type RideAssignmentRecentAssignment,
-  type RideAssignmentStats,
   type RideAssignmentWaitingCustomer,
 } from "../services/api";
 
@@ -65,20 +64,6 @@ interface SelectOption {
   label: string;
   value: string;
 }
-
-const EMPTY_STATS: RideAssignmentStats = {
-  waitingCustomers: 0,
-  availableDrivers: 0,
-  activeAssignments: 0,
-  completedToday: 0,
-};
-
-const FALLBACK_STATS: RideAssignmentStats = {
-  waitingCustomers: 7,
-  availableDrivers: 12,
-  activeAssignments: 9,
-  completedToday: 15,
-};
 
 const FALLBACK_PREFERENCES: RideAssignmentPreference[] = [
   {
@@ -257,7 +242,6 @@ const getAvatarRating = (rating?: number | null) =>
   typeof rating === "number" && rating > 0 ? rating : 4.8;
 
 export const RideAssignment = () => {
-  const [stats, setStats] = useState<RideAssignmentStats>(EMPTY_STATS);
   const [preferences, setPreferences] = useState<RideAssignmentPreference[]>(
     [],
   );
@@ -365,7 +349,6 @@ export const RideAssignment = () => {
         setLoadError("");
       }
 
-      const nextStats = statsResponse.ok ? statsResponse.data : EMPTY_STATS;
       const nextPreferences = preferencesResponse.ok
         ? preferencesResponse.data
         : [];
@@ -383,17 +366,6 @@ export const RideAssignment = () => {
         nextDrivers.length === 0 &&
         nextRecent.length === 0;
 
-      setStats(
-        shouldUseFallback
-          ? {
-              ...FALLBACK_STATS,
-              completedToday: Math.max(
-                nextStats.completedToday,
-                FALLBACK_STATS.completedToday,
-              ),
-            }
-          : nextStats,
-      );
       setPreferences(
         nextPreferences.length > 0 ? nextPreferences : FALLBACK_PREFERENCES,
       );
@@ -677,12 +649,9 @@ export const RideAssignment = () => {
       id: "completed" as const,
       label: "Completed Today",
       value: String(
-        Math.max(
-          stats.completedToday,
-          recentAssignments.filter(
-            (assignment) => assignment.status === "Completed",
-          ).length,
-        ),
+        recentAssignments.filter(
+          (assignment) => assignment.status === "Completed",
+        ).length,
       ).padStart(3, "0"),
       icon: completedTodayIcon,
     },
@@ -716,7 +685,6 @@ export const RideAssignment = () => {
       setLoadError("");
     }
 
-    const nextStats = statsResponse.ok ? statsResponse.data : EMPTY_STATS;
     const nextCustomers = customersResponse.ok ? customersResponse.data : [];
     const nextWaiting = waitingResponse.ok ? waitingResponse.data : [];
     const nextDrivers = availableDriversResponse.ok
@@ -728,17 +696,6 @@ export const RideAssignment = () => {
       nextDrivers.length === 0 &&
       nextRecent.length === 0;
 
-    setStats(
-      shouldUseFallback
-        ? {
-            ...FALLBACK_STATS,
-            completedToday: Math.max(
-              nextStats.completedToday,
-              FALLBACK_STATS.completedToday,
-            ),
-          }
-        : nextStats,
-    );
     setCustomers(
       nextCustomers.length > 0
         ? nextCustomers

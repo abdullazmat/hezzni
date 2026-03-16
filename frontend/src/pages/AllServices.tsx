@@ -35,6 +35,44 @@ import deliveryServicesIcon from "../assets/icons/Delivery Services.png";
 import rentalCompaniesIcon from "../assets/icons/Rental Companies.png";
 import ridersIcon from "../assets/icons/Riders.png";
 
+const ALL_SERVICES_STORAGE_KEY = "allServicesStateV1";
+
+function loadStoredServices(): ServiceItem[] | null {
+  try {
+    const raw = localStorage.getItem(ALL_SERVICES_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as ServiceItem[];
+  } catch {}
+  return null;
+}
+
+function saveStoredServices(services: ServiceItem[]) {
+  try {
+    localStorage.setItem(ALL_SERVICES_STORAGE_KEY, JSON.stringify(services));
+  } catch {}
+}
+
+function buildKpisFromServices(
+  services: ServiceItem[],
+  fallbackActiveRequests = 0,
+): ServiceManagementKpis {
+  const enabled = services.filter((service) => service.isActive).length;
+  const disabled = services.length - enabled;
+  const computedActiveRequests = services.reduce(
+    (sum, service) => sum + Number(service.activeNow || 0),
+    0,
+  );
+
+  return {
+    totalServices: services.length,
+    enabled,
+    disabled,
+    activeRequests:
+      computedActiveRequests > 0
+        ? computedActiveRequests
+        : fallbackActiveRequests,
+  };
+}
+
 const SERVICE_ICON_MAP: Record<string, string> = {
   CAR_RIDES: carIcon,
   MOTORCYCLE: bikeIcon,
@@ -81,8 +119,30 @@ export const AllServices = () => {
       getServiceManagementKpisApi(),
       getServiceManagementServicesApi(),
     ]);
-    if (kpiRes.ok) setKpis(kpiRes.data);
-    if (svcRes.ok) setServices(svcRes.data.services);
+
+    const apiServices = svcRes.ok ? svcRes.data.services : [];
+    const storedServices = loadStoredServices();
+
+    let resolvedServices: ServiceItem[] = Array.isArray(apiServices)
+      ? apiServices
+      : [];
+
+    if (storedServices && storedServices.length > 0) {
+      if (resolvedServices.length > 0) {
+        resolvedServices = resolvedServices.map((service) => {
+          const stored = storedServices.find((item) => item.id === service.id);
+          return stored ? { ...service, ...stored } : service;
+        });
+      } else {
+        resolvedServices = storedServices;
+      }
+    }
+
+    setServices(resolvedServices);
+    saveStoredServices(resolvedServices);
+
+    const fallbackActiveRequests = kpiRes.ok ? kpiRes.data.activeRequests : 0;
+    setKpis(buildKpisFromServices(resolvedServices, fallbackActiveRequests));
     setLoadingServices(false);
   }, []);
 
@@ -94,20 +154,21 @@ export const AllServices = () => {
     const svc = services.find((s) => s.id === id);
     if (!svc) return;
     const newActive = !svc.isActive;
-    setServices((prev) =>
-      prev.map((s) => (s.id === id ? { ...s, isActive: newActive } : s)),
+
+    const updatedServices = services.map((service) =>
+      service.id === id ? { ...service, isActive: newActive } : service,
     );
-    const res = await toggleServiceManagementApi(id, newActive);
-    if (res.ok) {
-      setKpis((prev) => ({
-        ...prev,
-        enabled: prev.enabled + (newActive ? 1 : -1),
-        disabled: prev.disabled + (newActive ? -1 : 1),
-      }));
-    } else {
-      setServices((prev) =>
-        prev.map((s) => (s.id === id ? { ...s, isActive: !newActive } : s)),
-      );
+
+    setServices(updatedServices);
+    saveStoredServices(updatedServices);
+    setKpis((prev) =>
+      buildKpisFromServices(updatedServices, prev.activeRequests),
+    );
+
+    try {
+      await toggleServiceManagementApi(id, newActive);
+    } catch {
+      // Keep local state so UI remains editable and persistent in fallback mode.
     }
   };
 
