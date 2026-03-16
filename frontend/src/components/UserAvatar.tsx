@@ -32,6 +32,14 @@ const PLACEHOLDER_AVATARS = [
   "https://randomuser.me/api/portraits/women/72.jpg",
 ];
 
+// Single default avatar used for admin accounts when API does not return one.
+const DEFAULT_ADMIN_AVATAR = "/default-admin-avatar.svg";
+
+function isAdminIdentity(name: string): boolean {
+  const normalized = name.trim().toLowerCase();
+  return normalized === "admin" || normalized.includes("super admin");
+}
+
 interface UserAvatarProps {
   src?: string | null;
   name?: string;
@@ -58,6 +66,10 @@ export const UserAvatar: React.FC<UserAvatarProps> = ({
 
   // Deterministic placeholder: same name always gets the same photo
   const placeholderSrc = useMemo(() => {
+    if (isAdminIdentity(name)) {
+      return DEFAULT_ADMIN_AVATAR;
+    }
+
     if (name) {
       return PLACEHOLDER_AVATARS[hashString(name) % PLACEHOLDER_AVATARS.length];
     }

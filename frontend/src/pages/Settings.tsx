@@ -1,50 +1,71 @@
-import { useState } from 'react';
-import { 
-  Users, 
-  Percent, 
-  Layout, 
-  MapPin,
-  FileText,
-  Gift
-} from 'lucide-react';
+import { useState } from "react";
+import { Users, Percent, Layout, MapPin, FileText, Gift } from "lucide-react";
 
 // Sub-components
-import { 
-  CommissionRules, 
-  FareStructure, 
-  DailyBonus, 
-  ServiceRegions, 
-  DocumentRequirements, 
-  TeamManagement 
-} from './settings_tabs';
+import {
+  CommissionRules,
+  FareStructure,
+  DailyBonus,
+  ServiceRegions,
+  DocumentRequirements,
+  TeamManagement,
+} from "./settings_tabs";
 
-
-
-export const Settings = ({ compact = false }: { compact?: boolean }) => {
-  const [activeTab, setActiveTab] = useState('commission-rules');
+export const Settings = ({
+  compact = false,
+  hideTeamManagement = false,
+}: {
+  compact?: boolean;
+  hideTeamManagement?: boolean;
+}) => {
+  const [activeTab, setActiveTab] = useState("commission-rules");
 
   const tabs = [
-    { id: 'commission-rules', label: 'Commission Rules', icon: <Percent size={18} /> },
-    { id: 'fare-structure', label: 'Fare Structure', icon: <Layout size={18} /> },
-    { id: 'daily-bonus', label: 'Daily Bonus', icon: <Gift size={18} /> },
-    { id: 'service-regions', label: 'Service Regions', icon: <MapPin size={18} /> },
-    { id: 'document-requirements', label: 'Document Requirements', icon: <FileText size={18} /> },
-    { id: 'team-management', label: 'Team Management', icon: <Users size={18} /> },
+    {
+      id: "commission-rules",
+      label: "Commission Rules",
+      icon: <Percent size={18} />,
+    },
+    {
+      id: "fare-structure",
+      label: "Fare Structure",
+      icon: <Layout size={18} />,
+    },
+    { id: "daily-bonus", label: "Daily Bonus", icon: <Gift size={18} /> },
+    {
+      id: "service-regions",
+      label: "Service Regions",
+      icon: <MapPin size={18} />,
+    },
+    {
+      id: "document-requirements",
+      label: "Document Requirements",
+      icon: <FileText size={18} />,
+    },
+    {
+      id: "team-management",
+      label: "Team Management",
+      icon: <Users size={18} />,
+    },
   ];
+
+  const visibleTabs = hideTeamManagement
+    ? tabs.filter((tab) => tab.id !== "team-management")
+    : tabs;
 
   const renderContent = () => {
     switch (activeTab) {
-      case 'commission-rules':
+      case "commission-rules":
         return <CommissionRules />;
-      case 'fare-structure':
+      case "fare-structure":
         return <FareStructure />;
-      case 'daily-bonus':
+      case "daily-bonus":
         return <DailyBonus />;
-      case 'service-regions':
+      case "service-regions":
         return <ServiceRegions />;
-      case 'document-requirements':
+      case "document-requirements":
         return <DocumentRequirements />;
-      case 'team-management':
+      case "team-management":
         return <TeamManagement />;
       default:
         return <DailyBonus />;
@@ -55,10 +76,10 @@ export const Settings = ({ compact = false }: { compact?: boolean }) => {
     <div className="vp-settings-wrapper">
       <style>{`
         .vp-settings-wrapper {
-            background-color: ${compact ? 'transparent' : '#f8fafc'};
-            min-height: ${compact ? 'auto' : '100vh'};
+            background-color: ${compact ? "transparent" : "#f8fafc"};
+            min-height: ${compact ? "auto" : "100vh"};
             box-sizing: border-box;
-            padding: ${compact ? '0' : '2.5rem'};
+            padding: ${compact ? "0" : "2.5rem"};
         }
 
         .vp-settings-header {
@@ -110,10 +131,13 @@ export const Settings = ({ compact = false }: { compact?: boolean }) => {
             background: #f1f5f9;
             padding: 8px;
             border-radius: 100px;
-            width: fit-content;
+          width: 100%;
             margin-bottom: 3rem;
-            overflow-x: auto;
+          overflow-x: visible;
             max-width: 100%;
+          flex-wrap: wrap;
+          align-items: center;
+          justify-content: flex-start;
             scrollbar-width: none;
             box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
         }
@@ -126,16 +150,17 @@ export const Settings = ({ compact = false }: { compact?: boolean }) => {
             display: flex;
             align-items: center;
             gap: 0.75rem;
-            padding: 1rem 2.25rem;
+          padding: ${compact ? "0.75rem 1.1rem" : "1rem 2.25rem"};
             border-radius: 100px;
             border: none;
             background: transparent;
             color: #64748b;
             font-weight: 800;
-            font-size: 1rem;
+          font-size: ${compact ? "0.9rem" : "1rem"};
             cursor: pointer;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             white-space: nowrap;
+          flex: 0 0 auto;
         }
 
         .vp-tab-trigger.active {
@@ -184,7 +209,7 @@ export const Settings = ({ compact = false }: { compact?: boolean }) => {
                 width: 100%;
             }
             .vp-settings-tabs {
-                border-radius: 20px;
+              border-radius: ${compact ? "16px" : "20px"};
                 padding: 6px;
             }
             .vp-tab-trigger {
@@ -201,28 +226,25 @@ export const Settings = ({ compact = false }: { compact?: boolean }) => {
             <h1>Settings</h1>
             <p>Configure platform settings and preferences</p>
           </div>
-          
         </div>
       )}
 
       {/* Tab Navigation */}
       <div className="vp-settings-tabs">
-        {tabs.map((tab) => (
+        {visibleTabs.map((tab) => (
           <button
             key={tab.id}
             onClick={() => setActiveTab(tab.id)}
-            className={`vp-tab-trigger ${activeTab === tab.id ? 'active' : ''}`}
+            className={`vp-tab-trigger ${activeTab === tab.id ? "active" : ""}`}
+            title={tab.label}
           >
-            {tab.icon}
+            {!compact && tab.icon}
             {tab.label}
           </button>
         ))}
       </div>
 
-      <div className="vp-settings-main-content">
-        {renderContent()}
-      </div>
+      <div className="vp-settings-main-content">{renderContent()}</div>
     </div>
   );
 };
-

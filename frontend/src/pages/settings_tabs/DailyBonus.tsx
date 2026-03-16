@@ -13,6 +13,74 @@ import dailyBonusIcon from "../../assets/icons/Daily Bonus Earned.png";
 import totalTripsIcon from "../../assets/icons/Total Trips Today.png";
 import revenueIcon from "../../assets/icons/Revenue.png";
 
+const FALLBACK_BONUS_CONFIG_FIELDS = [
+  {
+    label: "Daily Target Rides",
+    type: "number",
+    key: "dailyTargetRides",
+    value: "30",
+  },
+  {
+    label: "Per Ride Bonus (MAD)",
+    type: "number",
+    key: "perRideBonusMad",
+    value: "0.25",
+  },
+  {
+    label: "Max Daily Bonus",
+    type: "number",
+    key: "maxDailyBonus",
+    value: "30",
+  },
+  {
+    label: "Peak Hour Multiplier",
+    type: "number",
+    key: "peakHourMultiplier",
+    value: "2",
+  },
+  {
+    label: "Weekend Multiplier",
+    type: "number",
+    key: "weekendMultiplier",
+    value: "1.5",
+  },
+  {
+    label: "Daily Reset Time",
+    type: "text",
+    key: "dailyResetTime",
+    value: "00:00",
+    placeholder: "00:00",
+  },
+];
+
+const FALLBACK_PEAK_HOURS = [
+  { id: 1, startTime: "07:00 AM", endTime: "09:00 AM", bonusMadPerRide: 0.5 },
+  { id: 2, startTime: "05:30 PM", endTime: "08:00 PM", bonusMadPerRide: 0.75 },
+];
+
+const FALLBACK_RULES = [
+  {
+    id: 1,
+    action: "Complete Daily Target",
+    description: "Reward drivers who complete the daily ride target.",
+    amount: "7.5",
+    unit: "MAD",
+    userType: "Driver",
+    condition: "30 completed rides in one day",
+    status: true,
+  },
+  {
+    id: 2,
+    action: "Peak Hour Streak",
+    description: "Extra reward for consistent peak-hour trip completion.",
+    amount: "0.75",
+    unit: "MAD",
+    userType: "Driver",
+    condition: "At least 6 peak-hour trips completed",
+    status: true,
+  },
+];
+
 export const DailyBonus = () => {
   const [dailyBonusEnabled, setDailyBonusEnabled] = useState(true);
   const [, setLoading] = useState(true);
@@ -159,6 +227,8 @@ export const DailyBonus = () => {
             placeholder: "00:00",
           },
         ]);
+      } else {
+        setConfigFields(FALLBACK_BONUS_CONFIG_FIELDS);
       }
 
       if (peakRes.ok && peakRes.data) {
@@ -166,28 +236,38 @@ export const DailyBonus = () => {
           (peakRes.data as any).peakHours ||
           (peakRes.data as any).configurations ||
           peakRes.data;
-        if (Array.isArray(list)) setPeakHours(list);
+        if (Array.isArray(list) && list.length > 0) {
+          setPeakHours(list);
+        } else {
+          setPeakHours(FALLBACK_PEAK_HOURS);
+        }
+      } else {
+        setPeakHours(FALLBACK_PEAK_HOURS);
       }
 
       if (rulesRes.ok && rulesRes.data) {
         const list = (rulesRes.data as any).rules || rulesRes.data;
         if (Array.isArray(list)) {
-          setRules(
-            list.map((r: any) => ({
-              id: r.id,
-              action: r.name || r.action || "",
-              description: r.description || "",
-              amount: String(r.bonusAmount ?? r.amount ?? "0.25"),
-              unit: "MAD",
-              userType: r.userType || "Driver",
-              condition: r.conditions || r.condition || "",
-              status: r.isActive !== undefined ? r.isActive : true,
-            })),
-          );
+          const mappedRules = list.map((r: any) => ({
+            id: r.id,
+            action: r.name || r.action || "",
+            description: r.description || "",
+            amount: String(r.bonusAmount ?? r.amount ?? "0.25"),
+            unit: "MAD",
+            userType: r.userType || "Driver",
+            condition: r.conditions || r.condition || "",
+            status: r.isActive !== undefined ? r.isActive : true,
+          }));
+          setRules(mappedRules.length > 0 ? mappedRules : FALLBACK_RULES);
         }
+      } else {
+        setRules(FALLBACK_RULES);
       }
     } catch (e) {
       console.error("Failed to load bonus data", e);
+      setConfigFields(FALLBACK_BONUS_CONFIG_FIELDS);
+      setPeakHours(FALLBACK_PEAK_HOURS);
+      setRules(FALLBACK_RULES);
     }
     setLoading(false);
   };
@@ -782,48 +862,7 @@ export const DailyBonus = () => {
         </div>
 
         <div className="vp-form-grid">
-          {(configFields.length > 0
-            ? configFields
-            : [
-                {
-                  label: "Daily Target Rides",
-                  type: "number",
-                  key: "dailyTargetRides",
-                  value: "30",
-                },
-                {
-                  label: "Per Ride Bonus (MAD)",
-                  type: "number",
-                  key: "perRideBonusMad",
-                  value: "0.25",
-                },
-                {
-                  label: "Max Daily Bonus",
-                  type: "number",
-                  key: "maxDailyBonus",
-                  value: "30",
-                },
-                {
-                  label: "Peak Hour Multiplier",
-                  type: "number",
-                  key: "peakHourMultiplier",
-                  value: "2",
-                },
-                {
-                  label: "Weekend Multiplier",
-                  type: "number",
-                  key: "weekendMultiplier",
-                  value: "1.5",
-                },
-                {
-                  label: "Daily Reset Time",
-                  type: "text",
-                  key: "dailyResetTime",
-                  placeholder: "00:00",
-                  value: "",
-                },
-              ]
-          ).map((field: any, i: number) => (
+          {(configFields.length > 0 ? configFields : FALLBACK_BONUS_CONFIG_FIELDS).map((field: any, i: number) => (
             <div key={i} className="vp-input-group">
               <label>{field.label}</label>
               <input
@@ -856,7 +895,7 @@ export const DailyBonus = () => {
           Peak Hours Configuration
         </h2>
         <div className="vp-peak-hours-grid">
-          {(peakHours.length > 0 ? peakHours : [{ id: 1 }, { id: 2 }]).map(
+          {(peakHours.length > 0 ? peakHours : FALLBACK_PEAK_HOURS).map(
             (p: any, idx: number) => (
               <div key={p.id || idx} className="vp-peak-card">
                 <span className="title">Peak {idx + 1}</span>
@@ -923,7 +962,7 @@ export const DailyBonus = () => {
               </tr>
             </thead>
             <tbody>
-              {rules.map((rule, i) => (
+              {(rules.length > 0 ? rules : FALLBACK_RULES).map((rule, i) => (
                 <tr key={i}>
                   <td>
                     <div

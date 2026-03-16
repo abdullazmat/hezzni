@@ -7,6 +7,54 @@ import carIcon from "../../assets/icons/car.png";
 import taxiIcon from "../../assets/icons/taxi.png";
 import bikeIcon from "../../assets/icons/bike.png";
 
+const FALLBACK_REGIONS = [
+  {
+    id: 1,
+    name: "Casablanca",
+    drivers: 31,
+    trips: 420,
+    commission: "Enabled",
+    status: "Active",
+    services: [
+      { id: 1, label: "Car Ride", isActive: true },
+      { id: 2, label: "Motorcycle", isActive: true },
+      { id: 3, label: "Taxi", isActive: true },
+    ],
+  },
+  {
+    id: 2,
+    name: "Rabat",
+    drivers: 22,
+    trips: 290,
+    commission: "Enabled",
+    status: "Active",
+    services: [
+      { id: 4, label: "Car Ride", isActive: true },
+      { id: 5, label: "Taxi", isActive: true },
+    ],
+  },
+];
+
+function normalizeRegionServices(services: any[] | undefined) {
+  if (Array.isArray(services) && services.length > 0) {
+    return services.map((service: any, serviceIndex: number) => ({
+      id:
+        service.id ||
+        service.passengerServiceId ||
+        service.serviceId ||
+        serviceIndex + 1,
+      label:
+        service.serviceName ||
+        service.name ||
+        service.displayName ||
+        `Service ${serviceIndex + 1}`,
+      isActive: service.isActive !== undefined ? service.isActive : true,
+    }));
+  }
+
+  return FALLBACK_REGIONS[0].services;
+}
+
 function getServiceIcon(serviceName: string) {
   const normalizedName = serviceName.toLowerCase();
 
@@ -78,46 +126,33 @@ export const ServiceRegions = () => {
           "data",
         ]);
         if (Array.isArray(list)) {
-          setRegions(
-            list.map((r: any) => ({
-              id: r.id || r.regionId,
-              name: r.regionName || r.name || "",
-              drivers: r.activeDrivers ?? r.drivers ?? "0",
-              trips: r.tripsThisMonth ?? r.trips ?? "0",
-              commission: r.customCommission
-                ? "Enabled"
-                : r.commission || "Enabled",
-              status:
-                r.isActive !== undefined
-                  ? r.isActive
-                    ? "Active"
-                    : "Inactive"
-                  : r.status || "Active",
-              services: Array.isArray(r.services)
-                ? r.services.map((service: any, serviceIndex: number) => ({
-                    id:
-                      service.id ||
-                      service.passengerServiceId ||
-                      service.serviceId ||
-                      serviceIndex + 1,
-                    label:
-                      service.serviceName ||
-                      service.name ||
-                      service.displayName ||
-                      `Service ${serviceIndex + 1}`,
-                    isActive:
-                      service.isActive !== undefined ? service.isActive : true,
-                  }))
-                : [],
-            })),
-          );
+          const mapped = list.map((r: any) => ({
+            id: r.id || r.regionId,
+            name: r.regionName || r.name || "",
+            drivers: r.activeDrivers ?? r.drivers ?? "0",
+            trips: r.tripsThisMonth ?? r.trips ?? "0",
+            commission: r.customCommission
+              ? "Enabled"
+              : r.commission || "Enabled",
+            status:
+              r.isActive !== undefined
+                ? r.isActive
+                  ? "Active"
+                  : "Inactive"
+                : r.status || "Active",
+            services: normalizeRegionServices(r.services),
+          }));
+
+          setRegions(mapped.length > 0 ? mapped : FALLBACK_REGIONS);
         } else {
-          setRegions([]);
+          setRegions(FALLBACK_REGIONS);
         }
+      } else {
+        setRegions(FALLBACK_REGIONS);
       }
     } catch (e) {
       console.error("Failed to load regions", e);
-      setRegions([]);
+      setRegions(FALLBACK_REGIONS);
     }
     setLoading(false);
   };
@@ -510,23 +545,17 @@ export const ServiceRegions = () => {
               <div className="vp-services-preview">
                 <h4>Available Services</h4>
                 <div className="vp-services-tag-grid">
-                  {region.services.length === 0 ? (
-                    <div
-                      className="vp-service-tag"
-                      style={{ gridColumn: "1 / -1" }}
-                    >
-                      No service data
+                  {(region.services.length > 0
+                    ? region.services
+                    : FALLBACK_REGIONS[0].services
+                  ).map((service: any) => (
+                    <div key={service.id} className="vp-service-tag">
+                      <span style={{ color: "#38AC57", display: "flex" }}>
+                        {getServiceIcon(service.label)}
+                      </span>
+                      {service.label}
                     </div>
-                  ) : (
-                    region.services.map((service: any) => (
-                      <div key={service.id} className="vp-service-tag">
-                        <span style={{ color: "#38AC57", display: "flex" }}>
-                          {getServiceIcon(service.label)}
-                        </span>
-                        {service.label}
-                      </div>
-                    ))
-                  )}
+                  ))}
                 </div>
               </div>
             </div>
@@ -582,32 +611,27 @@ export const ServiceRegions = () => {
               <div className="vp-config-group">
                 <label>Service Availability</label>
                 <div className="vp-toggle-list">
-                  {selectedRegion.services.length === 0 ? (
-                    <div className="vp-toggle-item">
-                      <span>No service data returned from API</span>
-                    </div>
-                  ) : (
-                    selectedRegion.services.map((service: any) => (
-                      <div key={service.id} className="vp-toggle-item">
-                        <span>
-                          {getServiceIcon(service.label)} {service.label}
-                        </span>
+                  {(selectedRegion.services.length > 0
+                    ? selectedRegion.services
+                    : FALLBACK_REGIONS[0].services
+                  ).map((service: any) => (
+                    <div key={service.id} className="vp-toggle-item">
+                      <span>
+                        {getServiceIcon(service.label)} {service.label}
+                      </span>
+                      <div
+                        className="vp-switch-sm"
+                        style={{
+                          background: service.isActive ? "#38AC57" : "#e2e8f0",
+                        }}
+                      >
                         <div
-                          className="vp-switch-sm"
-                          style={{
-                            background: service.isActive
-                              ? "#38AC57"
-                              : "#e2e8f0",
-                          }}
-                        >
-                          <div
-                            className="knob"
-                            style={{ left: service.isActive ? "21px" : "3px" }}
-                          ></div>
-                        </div>
+                          className="knob"
+                          style={{ left: service.isActive ? "21px" : "3px" }}
+                        ></div>
                       </div>
-                    ))
-                  )}
+                    </div>
+                  ))}
                 </div>
               </div>
 

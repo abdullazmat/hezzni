@@ -1306,6 +1306,43 @@ export async function getCitiesApi(): Promise<
   });
 }
 
+
+// ─── Airport & Terminals ───────────────────────────────────────────────────
+
+export interface Airport {
+  id: number;
+  name: string;
+  code: string;
+  city: string;
+}
+
+export interface Terminal {
+  id: number;
+  name: string;
+}
+
+/**
+ * GET /api/passenger/airports
+ */
+export async function getAirportsApi(): Promise<
+  ApiResponse<{ status: string; data: Airport[] }>
+> {
+  return request("/api/passenger/airports", {
+    method: "GET",
+  });
+}
+
+/**
+ * GET /api/passenger/airports/:airportId/terminals
+ */
+export async function getAirportTerminalsApi(
+  airportId: number | string,
+): Promise<ApiResponse<{ status: string; data: Terminal[] }>> {
+  return request(`/api/passenger/airports/${airportId}/terminals`, {
+    method: "GET",
+  });
+}
+
 // ─── Driver Endpoints ──────────────────────────────────────────────────────
 
 export interface DriverServiceType {
@@ -1821,6 +1858,95 @@ export async function uploadTaxiFaceVerificationApi(
   return request<any>("/api/driver/taxi/face-verification", {
     method: "POST",
     body: formData,
+  });
+}
+
+
+/**
+ * GET /api/driver/ride-socket-info
+ */
+export async function getDriverRideSocketInfoApi(): Promise<ApiResponse<any>> {
+  return request("/api/driver/ride-socket-info", { method: "GET" });
+}
+
+/**
+ * GET /api/driver/bonus-config
+ */
+export async function getDriverBonusConfigApi(): Promise<ApiResponse<any>> {
+  return request("/api/driver/bonus-config", { method: "GET" });
+}
+
+// ─── Rental Vehicle Management (Driver) ────────────────────────────────────
+
+/**
+ * GET /api/driver/rental/makes
+ */
+export async function getDriverRentalMakesApi(): Promise<
+  ApiResponse<{ status: string; data: string[] }>
+> {
+  return request("/api/driver/rental/makes", { method: "GET" });
+}
+
+/**
+ * GET /api/driver/rental/models
+ */
+export async function getDriverRentalModelsApi(
+  make: string,
+): Promise<ApiResponse<{ status: string; data: string[] }>> {
+  return request(`/api/driver/rental/models?make=${encodeURIComponent(make)}`, {
+    method: "GET",
+  });
+}
+
+/**
+ * POST /api/driver/rental/vehicles
+ */
+export async function createDriverRentalVehicleApi(
+  formData: FormData,
+): Promise<ApiResponse<any>> {
+  return request("/api/driver/rental/vehicles", {
+    method: "POST",
+    body: formData,
+  });
+}
+
+/**
+ * GET /api/driver/rental/vehicles
+ */
+export async function getDriverRentalVehiclesApi(): Promise<ApiResponse<any>> {
+  return request("/api/driver/rental/vehicles", { method: "GET" });
+}
+
+/**
+ * GET /api/driver/rental/vehicles/:vehicleId
+ */
+export async function getDriverRentalVehicleDetailApi(
+  vehicleId: string | number,
+): Promise<ApiResponse<any>> {
+  return request(`/api/driver/rental/vehicles/${vehicleId}`, { method: "GET" });
+}
+
+/**
+ * PUT /api/driver/rental/vehicles/:vehicleId
+ */
+export async function updateDriverRentalVehicleApi(
+  vehicleId: string | number,
+  formData: FormData,
+): Promise<ApiResponse<any>> {
+  return request(`/api/driver/rental/vehicles/${vehicleId}`, {
+    method: "PUT",
+    body: formData,
+  });
+}
+
+/**
+ * DELETE /api/driver/rental/vehicles/:vehicleId
+ */
+export async function deleteDriverRentalVehicleApi(
+  vehicleId: string | number,
+): Promise<ApiResponse<any>> {
+  return request(`/api/driver/rental/vehicles/${vehicleId}`, {
+    method: "DELETE",
   });
 }
 
@@ -2628,6 +2754,42 @@ export async function updateDriverPreferencesApi(
   );
 }
 
+/**
+ * GET /api/admin/users/drivers/:driverId
+ */
+export async function getAdminUserDriverDetailApi(
+  driverId: number | string,
+): Promise<ApiResponse<any>> {
+  return request(`/api/admin/users/drivers/${driverId}`);
+}
+
+/**
+ * GET /api/admin/users/drivers/:driverId/stats
+ */
+export async function getAdminUserDriverStatsApi(
+  driverId: number | string,
+): Promise<ApiResponse<any>> {
+  return request(`/api/admin/users/drivers/${driverId}/stats`);
+}
+
+/**
+ * GET /api/admin/users/drivers/:driverId/wallet
+ */
+export async function getAdminUserDriverWalletApi(
+  driverId: number | string,
+): Promise<ApiResponse<any>> {
+  return request(`/api/admin/users/drivers/${driverId}/wallet`);
+}
+
+/**
+ * GET /api/admin/users/drivers/:driverId/documents
+ */
+export async function getAdminUserDriverDocumentsApi(
+  driverId: number | string,
+): Promise<ApiResponse<any>> {
+  return request(`/api/admin/users/drivers/${driverId}/documents`);
+}
+
 // ─── Admin Rider Management Endpoints ──────────────────────────────────────
 
 export interface AdminRiderStats {
@@ -2777,6 +2939,17 @@ export async function getRiderTripsApi(
   return request<{ trips: AdminRiderTrip[] }>(
     `/api/admin/rider/trips/${id}${buildQuery({ type })}`,
   );
+}
+
+/**
+ * GET /api/admin/users/passengers
+ */
+export async function getAdminPassengersApi(params?: {
+  page?: number;
+  limit?: number;
+  search?: string;
+}): Promise<ApiResponse<any>> {
+  return request(`/api/admin/users/passengers${buildQuery(params)}`);
 }
 
 // ─── Admin Driver Documents ─────────────────────────────────────────────────
@@ -3190,6 +3363,21 @@ export async function getNotificationRidePreferencesApi(): Promise<
   );
 }
 
+/**
+ * POST /api/admin/notifications/push
+ */
+export async function sendAdminPushNotificationApi(payload: {
+  title: string;
+  message: string;
+  target?: "all" | "drivers" | "passengers";
+  userIds?: (string | number)[];
+}): Promise<ApiResponse<{ message: string }>> {
+  return request("/api/admin/notifications/push", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+}
+
 // ─── Admin Reports & Analytics ──────────────────────────────────────────────
 
 export interface ReportKpis {
@@ -3332,6 +3520,94 @@ export async function exportReportApi(params: {
   period?: string;
 }): Promise<ApiResponse<unknown>> {
   return request<unknown>(`/api/admin/reports/export${buildQuery(params)}`);
+}
+
+// ─── Admin Financial Management ─────────────────────────────────────────────
+
+export interface AdminTransaction {
+  id: string | number;
+  transactionId: string;
+  amount: number;
+  currency: string;
+  status: string;
+  type: string;
+  paymentMethod: string;
+  passengerName: string;
+  driverName: string;
+  createdAt: string;
+}
+
+/**
+ * GET /api/admin/transactions/stats
+ */
+export async function getAdminTransactionStatsApi(): Promise<
+  ApiResponse<{
+    total: number;
+    successful: number;
+    failed: number;
+    pendingRefunds: number;
+  }>
+> {
+  return request("/api/admin/transactions/stats");
+}
+
+/**
+ * GET /api/admin/transactions
+ */
+export async function getAdminTransactionsApi(params?: {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: string;
+  type?: string;
+}): Promise<ApiResponse<{ transactions: AdminTransaction[]; total: number }>> {
+  return request(`/api/admin/transactions${buildQuery(params)}`);
+}
+
+/**
+ * GET /api/admin/transactions/:transactionId
+ */
+export async function getAdminTransactionDetailApi(
+  transactionId: string | number,
+): Promise<ApiResponse<AdminTransaction>> {
+  return request(`/api/admin/transactions/${transactionId}`);
+}
+
+// ─── Admin Configuration & Settings ─────────────────────────────────────────
+
+/**
+ * GET /api/admin/settings
+ */
+export async function getAdminSettingsApi(): Promise<ApiResponse<any>> {
+  return request("/api/admin/settings");
+}
+
+/**
+ * PUT /api/admin/settings
+ */
+export async function updateAdminSettingsApi(
+  payload: any,
+): Promise<ApiResponse<{ message: string }>> {
+  return request("/api/admin/settings", {
+    method: "PUT",
+    body: JSON.stringify(payload),
+  });
+}
+
+/**
+ * GET /api/admin/regions
+ */
+export async function getAdminGlobalRegionsApi(): Promise<ApiResponse<any[]>> {
+  return request("/api/admin/regions");
+}
+
+/**
+ * GET /api/admin/service-types
+ */
+export async function getAdminGlobalServiceTypesApi(): Promise<
+  ApiResponse<any[]>
+> {
+  return request("/api/admin/service-types");
 }
 
 // ─── Admin Service Management ───────────────────────────────────────────────
@@ -3739,4 +4015,20 @@ export async function deleteDocumentRequirementApi(
   return request<any>(`/api/admin/pricing/document-requirements/${id}`, {
     method: "DELETE",
   });
+}
+
+// ─── Health & Utilities ───────────────────────────────────────────────────
+
+/**
+ * GET /api/health
+ */
+export async function getHealthApi(): Promise<ApiResponse<{ status: string }>> {
+  return request("/api/health");
+}
+
+/**
+ * GET /api/dummy
+ */
+export async function getDummyApi(): Promise<ApiResponse<any>> {
+  return request("/api/dummy");
 }

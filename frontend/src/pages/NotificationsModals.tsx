@@ -14,6 +14,23 @@ interface ModalProps {
   onClose: () => void;
 }
 
+const FALLBACK_CITIES = [
+  { id: 1, name: "Casablanca" },
+  { id: 2, name: "Rabat" },
+  { id: 3, name: "Marrakech" },
+];
+
+const FALLBACK_RIDE_PREFERENCES = [
+  { id: 1, name: "Economy" },
+  { id: 2, name: "Comfort" },
+  { id: 3, name: "Delivery" },
+];
+
+const FALLBACK_REACH_BY_AUDIENCE: Record<string, number> = {
+  Drivers: 580,
+  Passengers: 540,
+};
+
 const ModalStyles = () => (
   <style>{`
         .modal-overlay {
@@ -201,22 +218,43 @@ export const CreateNotificationModal = ({ isOpen, onClose }: ModalProps) => {
   useEffect(() => {
     if (!isOpen) return;
     (async () => {
-      const [citiesRes, prefsRes] = await Promise.all([
+      const [citiesRes, prefsRes] = await Promise.allSettled([
         getNotificationCitiesApi(),
         getNotificationRidePreferencesApi(),
       ]);
-      if (citiesRes.ok) setCities(citiesRes.data);
-      if (prefsRes.ok) setRidePrefs(prefsRes.data);
+
+      const nextCities =
+        citiesRes.status === "fulfilled" && citiesRes.value.ok
+          ? citiesRes.value.data
+          : [];
+      const nextRidePrefs =
+        prefsRes.status === "fulfilled" && prefsRes.value.ok
+          ? prefsRes.value.data
+          : [];
+
+      setCities(nextCities.length > 0 ? nextCities : FALLBACK_CITIES);
+      setRidePrefs(
+        nextRidePrefs.length > 0 ? nextRidePrefs : FALLBACK_RIDE_PREFERENCES,
+      );
     })();
   }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || step !== 2) return;
     (async () => {
-      const res = await calculateNotificationReachApi({
-        audience: formData.target,
-      });
-      if (res.ok) setEstimatedReach(res.data.estimatedReach);
+      try {
+        const res = await calculateNotificationReachApi({
+          audience: formData.target,
+        });
+        if (res.ok && typeof res.data.estimatedReach === "number") {
+          setEstimatedReach(res.data.estimatedReach);
+          return;
+        }
+      } catch (e) {
+        console.error("Failed to calculate notification reach", e);
+      }
+
+      setEstimatedReach(FALLBACK_REACH_BY_AUDIENCE[formData.target] ?? 500);
     })();
   }, [isOpen, step, formData.target]);
 

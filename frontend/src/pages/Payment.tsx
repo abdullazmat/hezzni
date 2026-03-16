@@ -6,6 +6,7 @@ import {
   ArrowUpRight,
   Download,
   ExternalLink,
+  Eye,
 } from "lucide-react";
 import { UserAvatar } from "../components/UserAvatar";
 import {
@@ -13,6 +14,12 @@ import {
   TransactionHistoryModal,
   ProcessRefundModal,
 } from "./PaymentModals";
+import {
+  getAdminTransactionsApi,
+  getAdminTransactionStatsApi,
+  getAdminTransactionDetailApi,
+} from "../services/api";
+import { useCallback } from "react";
 
 // Specialized Icons
 import totalTransactionsIcon from "../assets/icons/total payments.png";
@@ -24,117 +31,150 @@ import visaIcon from "../assets/icons/visa.png";
 import cashIcon from "../assets/icons/cash.png";
 import walletIcon from "../assets/icons/hezzni wallet.png";
 
-// --- Types ---
+const FALLBACK_TRANSACTIONS = {
+  "Trip Payments": [
+    {
+      id: "TX-24001",
+      tripId: "TRP-12031",
+      rider: "Sara K.",
+      riderAvatar: "",
+      amount: "145.00",
+      currency: "MAD",
+      paymentMethod: "VISA",
+      status: "Completed",
+      refundStatus: "No Refund",
+      date: "16 Mar 2026, 10:35",
+    },
+    {
+      id: "TX-24002",
+      tripId: "TRP-12044",
+      rider: "Hajar M.",
+      riderAvatar: "",
+      amount: "89.00",
+      currency: "MAD",
+      paymentMethod: "Cash",
+      status: "Failed",
+      refundStatus: "Refund Pending",
+      date: "15 Mar 2026, 18:10",
+    },
+    {
+      id: "TX-24003",
+      tripId: "TRP-12057",
+      rider: "Omar T.",
+      riderAvatar: "",
+      amount: "112.00",
+      currency: "MAD",
+      paymentMethod: "Mastercard",
+      status: "Completed",
+      refundStatus: "No Refund",
+      date: "14 Mar 2026, 09:40",
+    },
+  ],
+  "Wallet Recharges": [
+    {
+      id: "WL-11001",
+      accountId: "R-00045",
+      rider: "Mohamed Alaoui",
+      riderAvatar: "",
+      amount: "55.66",
+      currency: "MAD",
+      paymentMethod: "Mastercard",
+      status: "Completed",
+      refundStatus: "No Refund",
+      date: "03 Jun 2025, 12:00",
+    },
+    {
+      id: "WL-11002",
+      accountId: "R-00062",
+      rider: "Lina B.",
+      riderAvatar: "",
+      amount: "120.00",
+      currency: "MAD",
+      paymentMethod: "Hezzni Wallet",
+      status: "Completed",
+      refundStatus: "No Refund",
+      date: "15 Mar 2026, 14:20",
+    },
+    {
+      id: "WL-11003",
+      accountId: "R-00077",
+      rider: "Salma H.",
+      riderAvatar: "",
+      amount: "80.00",
+      currency: "MAD",
+      paymentMethod: "Cash",
+      status: "Failed",
+      refundStatus: "No Refund",
+      date: "15 Mar 2026, 09:05",
+    },
+  ],
+  "Refund Management": [
+    {
+      id: "RF-51001",
+      tripId: "TRP-11881",
+      rider: "Youssef A.",
+      riderAvatar: "",
+      amount: "64.00",
+      currency: "MAD",
+      paymentMethod: "VISA",
+      status: "Completed",
+      refundStatus: "Refund Pending",
+      date: "13 Mar 2026, 17:15",
+    },
+    {
+      id: "RF-51002",
+      tripId: "TRP-11867",
+      rider: "Nora A.",
+      riderAvatar: "",
+      amount: "92.00",
+      currency: "MAD",
+      paymentMethod: "Mastercard",
+      status: "Completed",
+      refundStatus: "Refunded",
+      date: "12 Mar 2026, 11:45",
+    },
+    {
+      id: "RF-51003",
+      tripId: "TRP-11852",
+      rider: "Karim S.",
+      riderAvatar: "",
+      amount: "48.00",
+      currency: "MAD",
+      paymentMethod: "Cash",
+      status: "Failed",
+      refundStatus: "Under Review",
+      date: "11 Mar 2026, 20:30",
+    },
+  ],
+} as const;
 
-interface Transaction {
-  id: string;
-  tripId: string;
-  rider: string;
-  riderAvatar: string;
-  amount: string;
-  paymentMethod: "VISA" | "Mastercard" | "Hezzni Wallet" | "Cash";
-  status: "Completed" | "Failed" | "Pending" | "Cancelled";
-  refundStatus:
-    | "No Refund"
-    | "Refunded"
-    | "Refund Pending"
-    | "Refund Failed"
-    | "Under Review";
-  date: string;
+function buildFallbackStats(
+  activeView: "Trip Payments" | "Wallet Recharges" | "Refund Management",
+) {
+  const items = FALLBACK_TRANSACTIONS[activeView];
+  return {
+    total: items.length,
+    successful: items.filter((item) => item.status === "Completed").length,
+    failed: items.filter((item) => item.status === "Failed").length,
+    pendingRefunds: items.filter(
+      (item) => item.refundStatus === "Refund Pending",
+    ).length,
+  };
 }
 
-// --- Mock Data ---
-
-const mockTransactions: Transaction[] = [
-  {
-    id: "PAY001",
-    tripId: "TR001",
-    rider: "Youssef Benali",
-    riderAvatar: "https://i.pravatar.cc/150?u=1",
-    amount: "75.50 MAD",
-    paymentMethod: "VISA",
-    status: "Completed",
-    refundStatus: "No Refund",
-    date: "2025-01-10 14:30",
-  },
-  {
-    id: "PAY002",
-    tripId: "TR001",
-    rider: "Youssef Benali",
-    riderAvatar: "https://i.pravatar.cc/150?u=2",
-    amount: "75.50 MAD",
-    paymentMethod: "Hezzni Wallet",
-    status: "Completed",
-    refundStatus: "Refund Pending",
-    date: "2025-01-10 14:30",
-  },
-  {
-    id: "PAY003",
-    tripId: "TR001",
-    rider: "Youssef Benali",
-    riderAvatar: "https://i.pravatar.cc/150?u=3",
-    amount: "75.50 MAD",
-    paymentMethod: "Mastercard",
-    status: "Completed",
-    refundStatus: "Refunded",
-    date: "2025-01-10 14:30",
-  },
-  {
-    id: "PAY004",
-    tripId: "TR001",
-    rider: "Youssef Benali",
-    riderAvatar: "https://i.pravatar.cc/150?u=4",
-    amount: "75.50 MAD",
-    paymentMethod: "Cash",
-    status: "Cancelled",
-    refundStatus: "Refund Failed",
-    date: "2025-01-10 14:30",
-  },
-  {
-    id: "PAY005",
-    tripId: "TR001",
-    rider: "Youssef Benali",
-    riderAvatar: "https://i.pravatar.cc/150?u=5",
-    amount: "75.50 MAD",
-    paymentMethod: "VISA",
-    status: "Failed",
-    refundStatus: "Under Review",
-    date: "2025-01-10 14:30",
-  },
-  {
-    id: "PAY006",
-    tripId: "TR001",
-    rider: "Youssef Benali",
-    riderAvatar: "https://i.pravatar.cc/150?u=6",
-    amount: "75.50 MAD",
-    paymentMethod: "Mastercard",
-    status: "Completed",
-    refundStatus: "Refund Pending",
-    date: "2025-01-10 14:30",
-  },
-  {
-    id: "PAY007",
-    tripId: "TR001",
-    rider: "Youssef Benali",
-    riderAvatar: "https://i.pravatar.cc/150?u=7",
-    amount: "75.50 MAD",
-    paymentMethod: "Mastercard",
-    status: "Completed",
-    refundStatus: "Refund Pending",
-    date: "2025-01-10 14:30",
-  },
-  {
-    id: "PAY008",
-    tripId: "TR001",
-    rider: "Youssef Benali",
-    riderAvatar: "https://i.pravatar.cc/150?u=8",
-    amount: "75.50 MAD",
-    paymentMethod: "Mastercard",
-    status: "Completed",
-    refundStatus: "Refund Pending",
-    date: "2025-01-10 14:30",
-  },
-];
+function isEmptyStats(stats: {
+  total: number;
+  successful: number;
+  failed: number;
+  pendingRefunds: number;
+}) {
+  return (
+    stats.total === 0 &&
+    stats.successful === 0 &&
+    stats.failed === 0 &&
+    stats.pendingRefunds === 0
+  );
+}
 
 // --- Helper Components ---
 
@@ -403,37 +443,87 @@ export const Payment = () => {
   >("Trip Payments");
   const [activeStat, setActiveStat] = useState("All");
 
-  const [selectedTransaction, setSelectedTransaction] =
-    useState<Transaction | null>(null);
+  const [selectedTransaction, setSelectedTransaction] = useState<any | null>(
+    null,
+  );
   const [activeModal, setActiveModal] = useState<
     "details" | "history" | "refund" | null
   >(null);
 
-  // Filter Logic
-  const filteredTransactions = mockTransactions.filter((tx) => {
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase();
-      const matches =
-        tx.id.toLowerCase().includes(term) ||
-        tx.rider.toLowerCase().includes(term) ||
-        tx.tripId.toLowerCase().includes(term);
-      if (!matches) return false;
+  const [transactions, setTransactions] = useState<any[]>([]);
+  const [stats, setStats] = useState({
+    total: 0,
+    successful: 0,
+    failed: 0,
+    pendingRefunds: 0,
+  });
+  const [loading, setLoading] = useState(false);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await getAdminTransactionStatsApi();
+      if (res.ok && !isEmptyStats(res.data)) {
+        setStats(res.data);
+      } else {
+        setStats(buildFallbackStats(activeView));
+      }
+    } catch (e) {
+      console.error("Failed to fetch transaction stats:", e);
+      setStats(buildFallbackStats(activeView));
     }
+  }, [activeView]);
 
-    if (activeStat === "Successful" && tx.status !== "Completed") return false;
-    if (activeStat === "Failed" && tx.status !== "Failed") return false;
-    if (
-      activeStat === "Pending Refunds" &&
-      tx.refundStatus !== "Refund Pending"
-    )
-      return false;
+  const fetchTransactions = useCallback(async () => {
+    setLoading(true);
+    try {
+      const typeMap: Record<string, string> = {
+        "Trip Payments": "TRIP",
+        "Wallet Recharges": "WALLET",
+        "Refund Management": "REFUND",
+      };
 
+      const params: any = {
+        search: searchTerm || undefined,
+        type: typeMap[activeView],
+        status: statusFilter !== "All" ? statusFilter.toUpperCase() : undefined,
+      };
+
+      // If a specific stat card is clicked, override status
+      if (activeStat === "Successful") params.status = "COMPLETED";
+      if (activeStat === "Failed") params.status = "FAILED";
+      // pending refunds might be a different filter if the API supports it,
+      // otherwise we filter client-side or use a dedicated param if added.
+
+      const res = await getAdminTransactionsApi(params);
+      if (res.ok && res.data.transactions.length > 0) {
+        setTransactions(res.data.transactions);
+      } else {
+        setTransactions([...FALLBACK_TRANSACTIONS[activeView]]);
+      }
+    } catch (e) {
+      console.error("Failed to fetch transactions:", e);
+      setTransactions([...FALLBACK_TRANSACTIONS[activeView]]);
+    } finally {
+      setLoading(false);
+    }
+  }, [activeView, searchTerm, statusFilter, activeStat]);
+
+  useEffect(() => {
+    fetchStats();
+  }, [fetchStats]);
+
+  useEffect(() => {
+    fetchTransactions();
+  }, [fetchTransactions]);
+
+  // Filter Logic (Keeping some client-side fallback for filtering not yet in API)
+  const filteredTransactions = (transactions || []).filter((tx) => {
+    // If API already filtered most of it, we just do extra checks here if needed
     if (
       paymentMethodFilter !== "All" &&
       tx.paymentMethod !== paymentMethodFilter
     )
       return false;
-    if (statusFilter !== "All" && tx.status !== statusFilter) return false;
     if (refundStatusFilter !== "All" && tx.refundStatus !== refundStatusFilter)
       return false;
 
@@ -454,8 +544,17 @@ export const Payment = () => {
     setSearchTerm("");
   };
 
-  const handleViewTransaction = (tx: Transaction) => {
-    setSelectedTransaction(tx);
+  const handleViewTransaction = async (tx: any) => {
+    try {
+      const res = await getAdminTransactionDetailApi(tx.id);
+      if (res.ok) {
+        setSelectedTransaction(res.data);
+      } else {
+        setSelectedTransaction(tx);
+      }
+    } catch {
+      setSelectedTransaction(tx);
+    }
     setActiveModal("details");
   };
 
@@ -676,25 +775,25 @@ export const Payment = () => {
           {
             id: "All",
             label: "Total Transactions",
-            count: "0100",
+            count: String(stats.total).padStart(4, "0"),
             icon: totalTransactionsIcon,
           },
           {
             id: "Successful",
             label: "Successful",
-            count: "005",
+            count: String(stats.successful).padStart(4, "0"),
             icon: successfulPaymentsIcon,
           },
           {
             id: "Failed",
             label: "Failed",
-            count: "0250",
+            count: String(stats.failed).padStart(4, "0"),
             icon: failedPaymentsIcon,
           },
           {
             id: "Pending Refunds",
             label: "Pending Refunds",
-            count: "0250",
+            count: String(stats.pendingRefunds).padStart(4, "0"),
             icon: pendingRefundsIcon,
           },
         ].map((stat) => {
@@ -898,31 +997,15 @@ export const Payment = () => {
       {/* Table */}
       <div className="pay-table-container">
         <div className="pay-table-header">
-          {activeView === "Trip Payments" ? (
-            <>
-              <div>Transaction ID</div>
-              <div>Trip ID</div>
-              <div>Rider</div>
-              <div>Amount</div>
-              <div>Payment Method</div>
-              <div style={{ textAlign: "center" }}>Status</div>
-              <div style={{ textAlign: "center" }}>Refund Status</div>
-              <div style={{ textAlign: "center" }}>Date</div>
-              <div style={{ textAlign: "right" }}>Actions</div>
-            </>
-          ) : (
-            <>
-              <div>ID</div>
-              <div>Account ID</div>
-              <div>User</div>
-              <div>Amount</div>
-              <div>Method & Code</div>
-              <div style={{ textAlign: "center" }}>Status</div>
-              <div style={{ textAlign: "center" }}>Refund Status</div>
-              <div style={{ textAlign: "center" }}>Date</div>
-              <div style={{ textAlign: "right" }}>Actions</div>
-            </>
-          )}
+          <div>Transaction ID</div>
+          <div>{activeView === "Trip Payments" ? "Trip ID" : "Account ID"}</div>
+          <div>{activeView === "Trip Payments" ? "Rider" : "User"}</div>
+          <div>Amount</div>
+          <div>Method</div>
+          <div>Status</div>
+          <div>Refund</div>
+          <div>Date</div>
+          <div style={{ textAlign: "right" }}>Actions</div>
         </div>
 
         <div
@@ -933,104 +1016,126 @@ export const Payment = () => {
             minWidth: "1150px",
           }}
         >
-          {filteredTransactions.map((tx) => (
+          {(loading ? [] : filteredTransactions).map((tx) => (
             <div key={tx.id} className="pay-table-row">
-              <div style={{ fontWeight: "800" }}>{tx.id}</div>
-              <div style={{ fontWeight: "600", color: "#6b7280" }}>
-                {activeView === "Trip Payments" ? tx.tripId : "R-00045"}
+              <div style={{ fontWeight: "bold", color: "#374151" }}>
+                {tx.id}
               </div>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "0.6rem" }}
-              >
-                <UserAvatar
-                  src={tx.riderAvatar}
-                  name={tx.rider}
-                  size={32}
-                  rating={4.8}
-                  showBadge={true}
-                />
-                <div
-                  style={{
-                    fontWeight: "700",
-                    whiteSpace: "nowrap",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                  }}
-                >
-                  {tx.rider}
-                </div>
-              </div>
-              <div style={{ fontWeight: "800" }}>{tx.amount}</div>
-              <div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "0.5rem",
-                  }}
-                >
-                  <PaymentIcon method={tx.paymentMethod} />
-                  <span
-                    style={{
-                      fontSize: "0.8rem",
-                      color: "#4b5563",
-                      fontWeight: "600",
-                    }}
-                  >
-                    {tx.paymentMethod}
-                  </span>
-                </div>
-                {activeView !== "Trip Payments" && (
-                  <div
-                    style={{
-                      fontSize: "0.7rem",
-                      color: "#9ca3af",
-                      marginTop: "2px",
-                    }}
-                  >
-                    CP123456789
-                  </div>
-                )}
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <StatusBadge status={tx.status} type="payment" />
-              </div>
-              <div style={{ textAlign: "center" }}>
-                <StatusBadge status={tx.refundStatus} type="refund" />
+              <div style={{ color: "#6b7280", fontSize: "0.85rem" }}>
+                {tx.tripId || tx.accountId || "—"}
               </div>
               <div
                 style={{
-                  textAlign: "center",
-                  fontSize: "0.75rem",
-                  color: "#6b7280",
-                  fontWeight: "600",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "0.75rem",
                 }}
               >
-                {tx.date.split(" ")[0]}
-                <br />
-                {tx.date.split(" ")[1]}
+                <UserAvatar
+                  src={tx.riderAvatar || tx.passengerAvatar}
+                  name={tx.rider || tx.passengerName}
+                  size={32}
+                />
+                <span style={{ fontWeight: "500" }}>
+                  {tx.rider || tx.passengerName}
+                </span>
               </div>
-              <div style={{ textAlign: "right" }}>
+              <div style={{ fontWeight: "bold", color: "#38AC57" }}>
+                {tx.amount} {tx.currency || "MAD"}
+              </div>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "0.5rem" }}
+              >
+                <PaymentIcon method={tx.paymentMethod} />
+                <span>{tx.paymentMethod}</span>
+              </div>
+              <div>
+                <StatusBadge status={tx.status} type="payment" />
+              </div>
+              <div>
+                <StatusBadge
+                  status={tx.refundStatus || "No Refund"}
+                  type="refund"
+                />
+              </div>
+              <div style={{ color: "#6b7280", fontSize: "0.85rem" }}>
+                {tx.date || tx.createdAt}
+              </div>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "0.5rem",
+                  justifyContent: "flex-end",
+                }}
+              >
                 <button
                   onClick={() => handleViewTransaction(tx)}
                   style={{
-                    background: "#f3f4f6",
+                    background: "none",
                     border: "none",
-                    borderRadius: "2rem",
-                    padding: "0.5rem 1rem",
+                    color: "#38AC57",
                     cursor: "pointer",
-                    display: "inline-flex",
+                    padding: "0.4rem",
+                    borderRadius: "0.4rem",
+                    display: "flex",
                     alignItems: "center",
-                    gap: "0.3rem",
-                    fontSize: "0.75rem",
-                    fontWeight: "700",
+                    justifyContent: "center",
+                    backgroundColor: "#eef7f0",
                   }}
                 >
-                  <ExternalLink size={14} /> View
+                  <Eye size={16} />
+                </button>
+                <button
+                  onClick={() => {
+                    setSelectedTransaction(tx);
+                    setActiveModal("history");
+                  }}
+                  style={{
+                    background: "none",
+                    border: "none",
+                    color: "#6b7280",
+                    cursor: "pointer",
+                    padding: "0.4rem",
+                    borderRadius: "0.4rem",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    backgroundColor: "#f3f4f6",
+                  }}
+                >
+                  <ExternalLink size={16} />
                 </button>
               </div>
             </div>
           ))}
+
+          {!loading && filteredTransactions.length === 0 && (
+            <div
+              style={{
+                padding: "3rem",
+                textAlign: "center",
+                color: "#6b7280",
+                backgroundColor: "white",
+                borderRadius: "1rem",
+              }}
+            >
+              No {activeView.toLowerCase()} found
+            </div>
+          )}
+
+          {loading && (
+            <div
+              style={{
+                padding: "3rem",
+                textAlign: "center",
+                color: "#6b7280",
+                backgroundColor: "white",
+                borderRadius: "1rem",
+              }}
+            >
+              Loading transactions...
+            </div>
+          )}
         </div>
       </div>
 

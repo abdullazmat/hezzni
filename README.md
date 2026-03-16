@@ -191,6 +191,17 @@ project-root/
 7. Upload the contents of `frontend/dist` to `admin.hezzni.com/httpdocs`.
 8. Confirm `https://api.admin.hezzni.com/` responds and `https://api.admin.hezzni.com/uploads/...` serves files.
 
+## Plesk Git Deployment Action (Optional)
+
+If you deploy this repository through Plesk Git and run commands from the repository root, use:
+
+```bash
+npm run install:all
+npm run build
+```
+
+This now works because a root `package.json` has been added to forward build/install to `frontend` and `backend`.
+
 ## Local Development
 
 ### Backend

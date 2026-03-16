@@ -504,18 +504,17 @@ export const DriverDocuments = () => {
                 setActiveStat(isActive ? "Total Applications" : stat.key)
               }
               style={{
-                backgroundColor: "white",
+                backgroundColor: isActive ? "#38AC57" : "white",
+                color: isActive ? "white" : "#111827",
                 padding: "24px",
                 borderRadius: "24px",
                 position: "relative",
                 cursor: "pointer",
                 transition: "all 0.3s ease",
                 boxShadow: isActive
-                  ? "0 8px 20px rgba(56, 172, 87, 0.15)"
+                  ? "0 10px 15px -3px rgba(56, 172, 87, 0.4)"
                   : "0 1px 3px rgba(0,0,0,0.06)",
-                border: isActive
-                  ? "2px solid #38AC57"
-                  : "2px solid transparent",
+                border: "2px solid transparent",
                 transform: isActive ? "translateY(-2px)" : "none",
               }}
             >
@@ -536,6 +535,7 @@ export const DriverDocuments = () => {
                       width: "32px",
                       height: "32px",
                       objectFit: "contain",
+                      filter: isActive ? "brightness(0) invert(1)" : "none",
                     }}
                   />
                 </div>
@@ -543,7 +543,7 @@ export const DriverDocuments = () => {
                   style={{
                     fontWeight: "600",
                     fontSize: "14px",
-                    color: "#6b7280",
+                    color: isActive ? "white" : "#6b7280",
                   }}
                 >
                   {stat.label}
@@ -557,8 +557,8 @@ export const DriverDocuments = () => {
                   position: "absolute",
                   bottom: "24px",
                   right: "24px",
-                  backgroundColor: "#38AC57",
-                  color: "white",
+                  backgroundColor: isActive ? "white" : "#38AC57",
+                  color: isActive ? "#38AC57" : "white",
                   borderRadius: "50%",
                   padding: "6px",
                 }}

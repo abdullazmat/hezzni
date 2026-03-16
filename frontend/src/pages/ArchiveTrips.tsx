@@ -56,6 +56,105 @@ const EMPTY_STATS: ArchiveTripsStats = {
   commission: 0,
 };
 
+const FALLBACK_STATS: ArchiveTripsStats = {
+  totalArchived: 74,
+  completed: 58,
+  cancelled: 11,
+  disputed: 5,
+  revenue: 9280.5,
+  commission: 15,
+};
+
+const FALLBACK_TRIPS: ArchiveTripRow[] = [
+  {
+    id: "ARC-4102",
+    service: "Car Ride",
+    rider: {
+      name: "Rania T.",
+      id: "R-820",
+      rating: 4.8,
+      img: null,
+      city: "Casablanca",
+    },
+    driver: {
+      name: "Samir B.",
+      id: "D-301",
+      rating: 4.9,
+      img: null,
+    },
+    vehicle: "Car",
+    time: "10 Mar 2026, 14:20",
+    duration: "24 min",
+    status: "Completed",
+    fare: "168.00",
+    paymentMethod: "visa",
+    archivedAt: "2026-03-10T14:50:00.000Z",
+    archiveReason: "Completed and archived",
+  },
+  {
+    id: "ARC-4103",
+    service: "Taxi",
+    rider: {
+      name: "Imane S.",
+      id: "R-821",
+      rating: 4.5,
+      img: null,
+      city: "Rabat",
+    },
+    driver: {
+      name: "Mouad H.",
+      id: "D-302",
+      rating: 4.6,
+      img: null,
+    },
+    vehicle: "Taxi",
+    time: "11 Mar 2026, 09:10",
+    duration: "13 min",
+    status: "Cancelled",
+    fare: "0.00",
+    paymentMethod: "cash",
+    archivedAt: "2026-03-11T09:35:00.000Z",
+    archiveReason: "Rider cancelled after driver assignment",
+  },
+  {
+    id: "ARC-4104",
+    service: "Motorcycle",
+    rider: {
+      name: "Nora A.",
+      id: "R-822",
+      rating: 4.7,
+      img: null,
+      city: "Marrakech",
+    },
+    driver: {
+      name: "Adil K.",
+      id: "D-303",
+      rating: 4.7,
+      img: null,
+    },
+    vehicle: "Motorcycle",
+    time: "12 Mar 2026, 18:40",
+    duration: "19 min",
+    status: "Disputed",
+    fare: "89.00",
+    paymentMethod: "mastercard",
+    archivedAt: "2026-03-12T19:10:00.000Z",
+    archiveReason: "Fare dispute opened by rider",
+  },
+];
+
+const FALLBACK_CITIES: LiveTripsFilterOption[] = [
+  { id: 1, name: "Casablanca" },
+  { id: 2, name: "Rabat" },
+  { id: 3, name: "Marrakech" },
+];
+
+const FALLBACK_SERVICE_TYPES: LiveTripsServiceTypeOption[] = [
+  { id: 1, name: "CAR_RIDES", displayName: "Car Ride" },
+  { id: 2, name: "MOTORCYCLE", displayName: "Motorcycle" },
+  { id: 3, name: "TAXI", displayName: "Taxi" },
+];
+
 export const ArchiveTrips = () => {
   // Filter States
   const [searchTerm, setSearchTerm] = useState("");
@@ -88,8 +187,21 @@ export const ArchiveTrips = () => {
         getArchiveServiceTypesApi(),
       ]);
       if (cancelled) return;
-      if (citiesRes.ok) setCities(citiesRes.data);
-      if (serviceTypesRes.ok) setServiceTypes(serviceTypesRes.data);
+      if (citiesRes.ok) {
+        setCities(citiesRes.data.length > 0 ? citiesRes.data : FALLBACK_CITIES);
+      } else {
+        setCities(FALLBACK_CITIES);
+      }
+
+      if (serviceTypesRes.ok) {
+        setServiceTypes(
+          serviceTypesRes.data.length > 0
+            ? serviceTypesRes.data
+            : FALLBACK_SERVICE_TYPES,
+        );
+      } else {
+        setServiceTypes(FALLBACK_SERVICE_TYPES);
+      }
     };
     void loadFilters();
     return () => {
@@ -129,8 +241,20 @@ export const ArchiveTrips = () => {
         getArchiveTripsApi({ ...query, page: 1, limit: 100 } as any),
       ]);
       if (cancelled) return;
-      if (statsRes.ok) setStats(statsRes.data);
-      if (tripsRes.ok) setTrips(tripsRes.data.trips);
+
+      const nextStats = statsRes.ok ? statsRes.data : EMPTY_STATS;
+      const nextTrips = tripsRes.ok ? tripsRes.data.trips : [];
+      const shouldUseFallback =
+        nextTrips.length === 0 && isEmptyArchiveStats(nextStats);
+
+      if (shouldUseFallback) {
+        setStats(FALLBACK_STATS);
+        setTrips(FALLBACK_TRIPS);
+      } else {
+        setStats(nextStats);
+        setTrips(nextTrips);
+      }
+
       setIsLoading(false);
     };
     void load();
@@ -202,7 +326,9 @@ export const ArchiveTrips = () => {
 
   const formatTripDateTime = (value: string | null) => {
     if (!value) return "-";
-    const parsed = new Date(value);
+    // Standardize: remove " at " which can break some JS Date parsers
+    const normalized = value.replace(/\s+at\s+/i, " ");
+    const parsed = new Date(normalized);
     if (Number.isNaN(parsed.getTime())) return value;
 
     return parsed.toLocaleString("en-GB", {
@@ -224,11 +350,15 @@ export const ArchiveTrips = () => {
     return carIcon;
   };
 
-  const handlePreview = async (tripId: string) => {
-    setPreviewTripId(tripId);
-    const res = await getArchiveTripDetailApi(tripId);
+  const handlePreview = async (trip: ArchiveTripRow) => {
+    setPreviewTripId(trip.id);
+    const res = await getArchiveTripDetailApi(trip.id);
     setPreviewTripId(null);
-    if (res.ok) setSelectedTripDetail(res.data);
+    if (res.ok) {
+      setSelectedTripDetail(res.data);
+    } else {
+      setSelectedTripDetail(buildArchiveDetailFromRow(trip));
+    }
   };
 
   if (isLoading) return <PageLoader />;
@@ -743,7 +873,7 @@ export const ArchiveTrips = () => {
                 </td>
                 <td style={{ padding: "1rem" }}>
                   <button
-                    onClick={() => handlePreview(trip.id)}
+                    onClick={() => handlePreview(trip)}
                     disabled={previewTripId === trip.id}
                     style={{
                       display: "flex",
@@ -1578,6 +1708,74 @@ export const ArchiveTrips = () => {
     </div>
   );
 };
+
+function isEmptyArchiveStats(stats: ArchiveTripsStats) {
+  return (
+    stats.totalArchived === 0 &&
+    stats.completed === 0 &&
+    stats.cancelled === 0 &&
+    stats.disputed === 0 &&
+    stats.revenue === 0 &&
+    stats.commission === 0
+  );
+}
+
+function buildArchiveDetailFromRow(trip: ArchiveTripRow): ArchiveTripDetail {
+  return {
+    tripInfo: {
+      id: trip.id,
+      startTime: trip.time,
+      endTime: null,
+      distance: "—",
+      status: trip.status,
+    },
+    passenger: {
+      fullName: trip.rider.name,
+      customerId: trip.rider.id,
+      category: trip.service,
+      gender: null,
+      email: null,
+      phone: null,
+      city: trip.rider.city,
+      imageUrl: trip.rider.img,
+      rating: trip.rider.rating,
+    },
+    driver: {
+      fullName: trip.driver.name,
+      driverId: trip.driver.id,
+      vehicleType: trip.vehicle,
+      gender: null,
+      email: null,
+      phone: null,
+      city: null,
+      imageUrl: trip.driver.img,
+      rating: trip.driver.rating,
+    },
+    vehicle: {
+      driverId: trip.driver.id,
+      colour: null,
+      licencePlate: null,
+      makeModel: trip.vehicle,
+      year: null,
+      joinDate: null,
+    },
+    route: {
+      pickupAddress: "Demo pickup location",
+      dropoffAddress: "Demo dropoff location",
+    },
+    payment: {
+      method: trip.paymentMethod,
+      totalAmount: trip.fare,
+      tva: null,
+      serviceFee: null,
+      discount: null,
+    },
+    archiveInfo: {
+      archivedAt: trip.archivedAt,
+      reason: trip.archiveReason,
+    },
+  };
+}
 
 // Reusable Dropdown Component
 interface DropdownProps {

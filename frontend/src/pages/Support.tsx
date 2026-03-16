@@ -322,9 +322,8 @@ export const Support = () => {
           onClick={() => setFilterStats("all")}
           style={{
             cursor: "pointer",
-            border:
-              filterStats === "all" ? "2px solid #38AC57" : "1px solid #e5e7eb",
-            backgroundColor: filterStats === "all" ? "#eef7f0" : "white",
+            backgroundColor: filterStats === "all" ? "#38AC57" : "white",
+            border: filterStats === "all" ? "none" : "1px solid #e5e7eb",
           }}
         >
           <div className="stat-header">
@@ -332,10 +331,24 @@ export const Support = () => {
               <img
                 src={totalComplaintsIcon}
                 alt=""
-                style={{ width: "32px", height: "32px", objectFit: "contain" }}
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  objectFit: "contain",
+                  filter:
+                    filterStats === "all" ? "brightness(0) invert(1)" : "none",
+                }}
               />
             </div>
-            <span className="stat-label">Total Complaints</span>
+            <span
+              className="stat-label"
+              style={{
+                color:
+                  filterStats === "all" ? "white" : "var(--text-secondary)",
+              }}
+            >
+              Total Complaints
+            </span>
           </div>
           <div
             style={{
@@ -344,8 +357,19 @@ export const Support = () => {
               justifyContent: "space-between",
             }}
           >
-            <span className="stat-value">0{stats.total}</span>
-            <div className="stat-arrow">
+            <span
+              className="stat-value"
+              style={{ color: filterStats === "all" ? "white" : "black" }}
+            >
+              0{stats.total}
+            </span>
+            <div
+              className="stat-arrow"
+              style={{
+                backgroundColor: filterStats === "all" ? "black" : "#f3f4f6",
+                color: filterStats === "all" ? "white" : "black",
+              }}
+            >
               <ArrowUpRight size={20} />
             </div>
           </div>
@@ -408,12 +432,10 @@ export const Support = () => {
           onClick={() => setFilterStats("in-progress")}
           style={{
             cursor: "pointer",
-            border:
-              filterStats === "in-progress"
-                ? "2px solid #38AC57"
-                : "1px solid #e5e7eb",
             backgroundColor:
-              filterStats === "in-progress" ? "#eef7f0" : "white",
+              filterStats === "in-progress" ? "#38AC57" : "white",
+            border:
+              filterStats === "in-progress" ? "none" : "1px solid #e5e7eb",
           }}
         >
           <div className="stat-header">
@@ -421,10 +443,28 @@ export const Support = () => {
               <img
                 src={inProgressIcon}
                 alt=""
-                style={{ width: "32px", height: "32px", objectFit: "contain" }}
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  objectFit: "contain",
+                  filter:
+                    filterStats === "in-progress"
+                      ? "brightness(0) invert(1)"
+                      : "none",
+                }}
               />
             </div>
-            <span className="stat-label">In Progress</span>
+            <span
+              className="stat-label"
+              style={{
+                color:
+                  filterStats === "in-progress"
+                    ? "white"
+                    : "var(--text-secondary)",
+              }}
+            >
+              In Progress
+            </span>
           </div>
           <div
             style={{
@@ -433,8 +473,22 @@ export const Support = () => {
               justifyContent: "space-between",
             }}
           >
-            <span className="stat-value">0{stats.inProgress}</span>
-            <div className="stat-arrow">
+            <span
+              className="stat-value"
+              style={{
+                color: filterStats === "in-progress" ? "white" : "black",
+              }}
+            >
+              0{stats.inProgress}
+            </span>
+            <div
+              className="stat-arrow"
+              style={{
+                backgroundColor:
+                  filterStats === "in-progress" ? "black" : "#f3f4f6",
+                color: filterStats === "in-progress" ? "white" : "black",
+              }}
+            >
               <ArrowUpRight size={20} />
             </div>
           </div>
@@ -445,11 +499,8 @@ export const Support = () => {
           onClick={() => setFilterStats("resolved")}
           style={{
             cursor: "pointer",
-            border:
-              filterStats === "resolved"
-                ? "2px solid #38AC57"
-                : "1px solid #e5e7eb",
-            backgroundColor: filterStats === "resolved" ? "#eef7f0" : "white",
+            backgroundColor: filterStats === "resolved" ? "#38AC57" : "white",
+            border: filterStats === "resolved" ? "none" : "1px solid #e5e7eb",
           }}
         >
           <div className="stat-header">
@@ -457,10 +508,28 @@ export const Support = () => {
               <img
                 src={resolvedIcon}
                 alt=""
-                style={{ width: "32px", height: "32px", objectFit: "contain" }}
+                style={{
+                  width: "32px",
+                  height: "32px",
+                  objectFit: "contain",
+                  filter:
+                    filterStats === "resolved"
+                      ? "brightness(0) invert(1)"
+                      : "none",
+                }}
               />
             </div>
-            <span className="stat-label">Resolved</span>
+            <span
+              className="stat-label"
+              style={{
+                color:
+                  filterStats === "resolved"
+                    ? "white"
+                    : "var(--text-secondary)",
+              }}
+            >
+              Resolved
+            </span>
           </div>
           <div
             style={{
@@ -469,8 +538,20 @@ export const Support = () => {
               justifyContent: "space-between",
             }}
           >
-            <span className="stat-value">0{stats.resolved}</span>
-            <div className="stat-arrow">
+            <span
+              className="stat-value"
+              style={{ color: filterStats === "resolved" ? "white" : "black" }}
+            >
+              0{stats.resolved}
+            </span>
+            <div
+              className="stat-arrow"
+              style={{
+                backgroundColor:
+                  filterStats === "resolved" ? "black" : "#f3f4f6",
+                color: filterStats === "resolved" ? "white" : "black",
+              }}
+            >
               <ArrowUpRight size={20} />
             </div>
           </div>

@@ -77,9 +77,7 @@ interface CompanyRecord {
   contract: string;
 }
 
-
 // mockCompanies and mockVehicles removed as unused
-
 
 // Dropdown
 const Dropdown = ({
@@ -705,7 +703,7 @@ export const RentalCompanies = () => {
               key={stat.key}
               onClick={() => setActiveStat(isActive ? "" : stat.key)}
               style={{
-                backgroundColor: "white",
+                backgroundColor: isActive ? "#38AC57" : "white",
                 padding: "24px",
                 borderRadius: "24px",
                 position: "relative",
@@ -714,9 +712,7 @@ export const RentalCompanies = () => {
                 boxShadow: isActive
                   ? "0 8px 20px rgba(56, 172, 87, 0.15)"
                   : "0 1px 3px rgba(0,0,0,0.06)",
-                border: isActive
-                  ? "2px solid #38AC57"
-                  : "2px solid transparent",
+                border: "2px solid transparent",
                 transform: isActive ? "translateY(-2px)" : "none",
                 overflow: "hidden",
               }}
@@ -725,13 +721,19 @@ export const RentalCompanies = () => {
                 style={{
                   fontWeight: "600",
                   fontSize: "14px",
-                  color: "#6b7280",
+                  color: isActive ? "white" : "#6b7280",
                   marginBottom: "4px",
                 }}
               >
                 {stat.label}
               </div>
-              <div style={{ fontSize: "48px", fontWeight: "bold" }}>
+              <div
+                style={{
+                  fontSize: "48px",
+                  fontWeight: "bold",
+                  color: isActive ? "white" : "#111827",
+                }}
+              >
                 {stat.value}
               </div>
               <div
@@ -740,6 +742,11 @@ export const RentalCompanies = () => {
                   right: "16px",
                   bottom: "16px",
                   opacity: 1.0,
+                  backgroundColor: isActive
+                    ? "rgba(255,255,255,0.15)"
+                    : "transparent",
+                  borderRadius: "16px",
+                  padding: isActive ? "6px" : 0,
                 }}
               >
                 <img

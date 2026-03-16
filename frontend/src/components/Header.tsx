@@ -6,6 +6,27 @@ import { resolveApiAssetUrl } from "../services/api";
 // Import custom icons
 import bellIcon from "../assets/icons/notification-bell.png";
 
+const HEADER_NOTIFICATIONS = [
+  {
+    id: 1,
+    title: "New Driver Registration",
+    time: "2 mins ago",
+    unread: true,
+  },
+  {
+    id: 2,
+    title: "Platform Update Successful",
+    time: "1 hour ago",
+    unread: false,
+  },
+  {
+    id: 3,
+    title: "Weekly Reports Ready",
+    time: "5 hours ago",
+    unread: false,
+  },
+];
+
 export const Header = ({
   onLogout,
   onToggleSidebar,
@@ -48,6 +69,33 @@ export const Header = ({
     }[]
   >([]);
   const [showNotifications, setShowNotifications] = useState(false);
+
+  const resolvedHeaderAvatarSrc = (() => {
+    if (!user) {
+      return undefined;
+    }
+
+    if (typeof user.avatarUrl === "string" && user.avatarUrl.trim()) {
+      return resolveApiAssetUrl(user.avatarUrl.trim());
+    }
+
+    if (typeof user.avatar === "string" && user.avatar.trim()) {
+      const rawAvatar = user.avatar.trim();
+      if (
+        rawAvatar.startsWith("http://") ||
+        rawAvatar.startsWith("https://") ||
+        rawAvatar.startsWith("data:") ||
+        rawAvatar.startsWith("/uploads/") ||
+        rawAvatar.startsWith("uploads/")
+      ) {
+        return resolveApiAssetUrl(rawAvatar);
+      }
+
+      return resolveApiAssetUrl(`/uploads/avatars/${rawAvatar}`);
+    }
+
+    return undefined;
+  })();
 
   const dummyData = [
     {
@@ -462,13 +510,14 @@ export const Header = ({
                 className="notification-dropdown"
                 style={{
                   position: "absolute",
-                  top: "120%",
+                  top: "calc(100% + 12px)",
                   right: 0,
-                  width: "320px",
+                  width: "340px",
+                  maxWidth: "calc(100vw - 32px)",
                   backgroundColor: "white",
                   borderRadius: "1.25rem",
                   boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)",
-                  zIndex: 100,
+                  zIndex: 1200,
                   border: "1px solid #f1f5f9",
                   overflow: "hidden",
                 }}
@@ -497,26 +546,7 @@ export const Header = ({
                   </span>
                 </div>
                 <div style={{ maxHeight: "300px", overflowY: "auto" }}>
-                  {[
-                    {
-                      id: 1,
-                      title: "New Driver Registration",
-                      time: "2 mins ago",
-                      unread: true,
-                    },
-                    {
-                      id: 2,
-                      title: "Platform Update Successful",
-                      time: "1 hour ago",
-                      unread: false,
-                    },
-                    {
-                      id: 3,
-                      title: "Weekly Reports Ready",
-                      time: "5 hours ago",
-                      unread: false,
-                    },
-                  ].map((notif) => (
+                  {HEADER_NOTIFICATIONS.map((notif) => (
                     <div
                       key={notif.id}
                       style={{
@@ -581,6 +611,10 @@ export const Header = ({
                   }}
                 >
                   <button
+                    onClick={() => {
+                      setShowNotifications(false);
+                      onNavigate("notifications");
+                    }}
                     style={{
                       border: "none",
                       background: "none",
@@ -628,11 +662,8 @@ export const Header = ({
             }
           >
             <UserAvatar
-              src={
-                user.avatar
-                  ? resolveApiAssetUrl(`/uploads/avatars/${user.avatar}`)
-                  : "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80"
-              }
+              src={resolvedHeaderAvatarSrc}
+              name={user.name}
               size={44}
               showBadge={false}
               className="profile-img-header"

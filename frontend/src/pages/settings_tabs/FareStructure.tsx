@@ -6,6 +6,53 @@ import {
   getPricingCitiesApi,
 } from "../../services/api";
 
+const FALLBACK_SERVICES = [
+  { id: 1, serviceName: "Car Ride" },
+  { id: 2, serviceName: "Motorcycle" },
+  { id: 3, serviceName: "Taxi" },
+];
+
+const FALLBACK_CITIES = [{ id: 1, name: "Casablanca" }];
+
+const FALLBACK_PRICING = [
+  {
+    id: 1,
+    serviceName: "Car Ride",
+    baseFare: 8,
+    bookingFee: 2,
+    perMinute: 0.6,
+    nightSurcharge: 15,
+    perKm: 2.8,
+    cancellationFee: 6,
+    minFare: 12,
+    peakHourSurcharge: 20,
+  },
+  {
+    id: 2,
+    serviceName: "Motorcycle",
+    baseFare: 5,
+    bookingFee: 1,
+    perMinute: 0.35,
+    nightSurcharge: 10,
+    perKm: 1.6,
+    cancellationFee: 4,
+    minFare: 8,
+    peakHourSurcharge: 18,
+  },
+  {
+    id: 3,
+    serviceName: "Taxi",
+    baseFare: 9,
+    bookingFee: 2,
+    perMinute: 0.7,
+    nightSurcharge: 12,
+    perKm: 3.2,
+    cancellationFee: 7,
+    minFare: 14,
+    peakHourSurcharge: 22,
+  },
+];
+
 export const FareStructure = () => {
   const [activeService, setActiveService] = useState("");
   const [services, setServices] = useState<any[]>([]);
@@ -30,22 +77,38 @@ export const FareStructure = () => {
         getServicesForPriceApi(),
         getPricingCitiesApi(),
       ]);
+      let nextServices = FALLBACK_SERVICES;
+      let nextCities = FALLBACK_CITIES;
+
       if (servicesRes.ok && servicesRes.data) {
         const svcList = (servicesRes.data as any).services || servicesRes.data;
         if (Array.isArray(svcList) && svcList.length > 0) {
-          setServices(svcList);
-          setActiveService(svcList[0].serviceName || svcList[0].name || "");
+          nextServices = svcList;
         }
       }
       if (citiesRes.ok && citiesRes.data) {
         const cityList = (citiesRes.data as any).cities || citiesRes.data;
         if (Array.isArray(cityList) && cityList.length > 0) {
-          setCities(cityList);
-          setSelectedCityId(cityList[0].id || cityList[0].cityId || 1);
+          nextCities = cityList;
         }
       }
+
+      setServices(nextServices);
+      setActiveService(
+        (nextServices[0] as any)?.serviceName ||
+          (nextServices[0] as any)?.name ||
+          "Car Ride",
+      );
+      setCities(nextCities);
+      setSelectedCityId(
+        (nextCities[0] as any)?.id || (nextCities[0] as any)?.cityId || 1,
+      );
     } catch (e) {
       console.error("Failed to load services/cities", e);
+      setServices(FALLBACK_SERVICES);
+      setActiveService(FALLBACK_SERVICES[0].serviceName);
+      setCities(FALLBACK_CITIES);
+      setSelectedCityId(FALLBACK_CITIES[0].id);
     }
   };
 
@@ -57,15 +120,21 @@ export const FareStructure = () => {
         const list =
           (res.data as any).pricing || (res.data as any).matrix || res.data;
         if (Array.isArray(list)) {
-          setPricingData(list);
+          setPricingData(list.length > 0 ? list : FALLBACK_PRICING);
           // Set active service if not already set
-          if (!activeService && list.length > 0) {
-            setActiveService(list[0].serviceName || list[0].name || "");
+          if (!activeService) {
+            const firstPricing = list.length > 0 ? list[0] : FALLBACK_PRICING[0];
+            setActiveService(firstPricing.serviceName || firstPricing.name || "");
           }
+        } else {
+          setPricingData(FALLBACK_PRICING);
         }
+      } else {
+        setPricingData(FALLBACK_PRICING);
       }
     } catch (e) {
       console.error("Failed to load pricing", e);
+      setPricingData(FALLBACK_PRICING);
     }
     setLoading(false);
   };

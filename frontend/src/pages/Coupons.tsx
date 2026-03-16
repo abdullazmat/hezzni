@@ -4,10 +4,12 @@ import { Promotion } from "./CouponTypes";
 import { CouponsModal, CreatePromotionModal } from "./CouponsModals";
 import {
   getAdminCouponsApi,
+  getAdminCouponStatsApi,
   createAdminCouponApi,
   updateAdminCouponApi,
   deleteAdminCouponApi,
 } from "../services/api";
+import { Ticket, CheckCircle, XCircle } from "lucide-react";
 
 export const Coupons = () => {
   const [promotions, setPromotions] = useState<Promotion[]>([]);
@@ -17,6 +19,18 @@ export const Coupons = () => {
   );
   const [isDetailsModalOpen, setIsDetailsModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [stats, setStats] = useState({ total: 0, active: 0, expired: 0 });
+
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await getAdminCouponStatsApi();
+      if (res.ok) {
+        setStats(res.data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch coupon stats:", e);
+    }
+  }, []);
 
   const fetchPromotions = useCallback(async () => {
     try {
@@ -33,7 +47,8 @@ export const Coupons = () => {
 
   useEffect(() => {
     fetchPromotions();
-  }, [fetchPromotions]);
+    fetchStats();
+  }, [fetchPromotions, fetchStats]);
 
   const filteredPromotions = useMemo(() => {
     return promotions.filter(
@@ -144,6 +159,34 @@ export const Coupons = () => {
             margin: 0;
             color: #6B7280;
             font-size: 1rem;
+        }
+        .prm-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+            margin-bottom: 2.5rem;
+        }
+        .prm-stat-card {
+            background-color: white;
+            padding: 1.5rem;
+            border-radius: 20px;
+            border: 1px solid #e5e7eb;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: all 0.2s;
+        }
+        .prm-stat-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.05);
+        }
+        .prm-stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .prm-create-btn {
             background-color: #38AC57;
@@ -272,6 +315,36 @@ export const Coupons = () => {
         >
           <Plus size={24} strokeWidth={3} /> Create Promotion
         </button>
+      </div>
+
+      <div className="prm-stats-grid">
+        <div className="prm-stat-card">
+          <div className="prm-stat-icon" style={{ backgroundColor: "#eef2ff", color: "#6366f1" }}>
+            <Ticket size={24} />
+          </div>
+          <div>
+            <div style={{ color: "#6B7280", fontSize: "0.85rem", fontWeight: "600" }}>Total Coupons</div>
+            <div style={{ fontSize: "1.5rem", fontWeight: "800", color: "#111827" }}>{stats.total}</div>
+          </div>
+        </div>
+        <div className="prm-stat-card">
+          <div className="prm-stat-icon" style={{ backgroundColor: "#ecfdf5", color: "#10b981" }}>
+            <CheckCircle size={24} />
+          </div>
+          <div>
+            <div style={{ color: "#6B7280", fontSize: "0.85rem", fontWeight: "600" }}>Active Coupons</div>
+            <div style={{ fontSize: "1.5rem", fontWeight: "800", color: "#111827" }}>{stats.active}</div>
+          </div>
+        </div>
+        <div className="prm-stat-card">
+          <div className="prm-stat-icon" style={{ backgroundColor: "#fef2f2", color: "#ef4444" }}>
+            <XCircle size={24} />
+          </div>
+          <div>
+            <div style={{ color: "#6B7280", fontSize: "0.85rem", fontWeight: "600" }}>Expired Coupons</div>
+            <div style={{ fontSize: "1.5rem", fontWeight: "800", color: "#111827" }}>{stats.expired}</div>
+          </div>
+        </div>
       </div>
 
       <div className="prm-search-container">

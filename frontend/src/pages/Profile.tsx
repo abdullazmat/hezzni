@@ -232,7 +232,7 @@ export const Profile = ({ onLogout }: { onLogout?: () => void }) => {
 
   const avatarUrl = profile?.avatar
     ? resolveApiUrl(`/uploads/avatars/${profile.avatar}`)
-    : "https://images.unsplash.com/photo-1494790108377-be9c29b29330?ixlib=rb-1.2.1&ixid=eyJhcHBfaWQiOjEyMDd9&auto=format&fit=facearea&facepad=2&w=256&h=256&q=80";
+    : undefined;
 
   const tabs = [
     { id: "login-history", label: "Login History" },

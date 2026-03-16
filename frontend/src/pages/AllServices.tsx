@@ -1831,7 +1831,7 @@ export const AllServices = () => {
               </button>
             </div>
             <div className="vp-modal-body">
-              <Settings compact={true} />
+              <Settings compact={true} hideTeamManagement={true} />
             </div>
           </div>
         </div>
@@ -1867,10 +1867,10 @@ export const AllServices = () => {
             background-color: white;
             border-radius: 2.5rem;
             width: 100%;
-            max-width: 1000px;
+          max-width: min(1360px, 96vw);
             position: relative;
             box-shadow: 0 25px 50px -12px rgba(0,0,0,0.3);
-            max-height: 95vh;
+          max-height: 96vh;
             overflow-y: auto;
             animation: fadeIn 0.3s ease-out;
         }
@@ -1931,7 +1931,8 @@ export const AllServices = () => {
         @media (max-width: 768px) {
             .vp-modal-card {
                 border-radius: 1.5rem;
-                max-height: 100vh;
+            max-height: 98vh;
+            max-width: 100vw;
             }
             .vp-modal-header {
                 padding: 1.5rem;

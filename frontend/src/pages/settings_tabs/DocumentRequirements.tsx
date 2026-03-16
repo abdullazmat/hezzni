@@ -7,6 +7,77 @@ import {
   deleteDocumentRequirementApi,
 } from "../../services/api";
 
+const FALLBACK_DOCUMENT_TYPES = [
+  {
+    id: 1,
+    name: "National ID (CIN)",
+    description: "Moroccan national identity card",
+    types: ["DRIVER", "RIDER"],
+    limits: "Max: 5MB",
+    formats: "JPG, PNG, PDF",
+  },
+  {
+    id: 2,
+    name: "Driving License",
+    description: "Valid Moroccan driving license",
+    types: ["DRIVER"],
+    limits: "Max: 5MB",
+    formats: "JPG, PNG, PDF",
+  },
+  {
+    id: 3,
+    name: "Vehicle Registration (Carte Grise)",
+    description: "Vehicle registration document",
+    types: ["DRIVER"],
+    limits: "Max: 5MB",
+    formats: "JPG, PNG, PDF",
+  },
+  {
+    id: 4,
+    name: "Vehicle Insurance",
+    description: "Valid vehicle insurance certificate",
+    types: ["DRIVER"],
+    limits: "Max: 5MB",
+    formats: "JPG, PNG, PDF",
+  },
+  {
+    id: 5,
+    name: "Criminal Background Check",
+    description: "Clean criminal record certificate",
+    types: ["DRIVER"],
+    limits: "Max: 5MB",
+    formats: "JPG, PNG, PDF",
+  },
+  {
+    id: 6,
+    name: "Medical Certificate",
+    description: "Medical fitness certificate",
+    types: ["DRIVER", "RENTAL CO."],
+    limits: "Max: 5MB",
+    formats: "JPG, PNG, PDF",
+  },
+];
+
+function normalizeUserTypes(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    const normalized = value
+      .map((item) =>
+        typeof item === "string" ? item.trim().toUpperCase() : "",
+      )
+      .filter(Boolean);
+    return normalized.length > 0 ? normalized : ["DRIVER"];
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return value
+      .split(",")
+      .map((item) => item.trim().toUpperCase())
+      .filter(Boolean);
+  }
+
+  return ["DRIVER"];
+}
+
 export const DocumentRequirements = () => {
   const [selectedDoc, setSelectedDoc] = useState<any>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -32,25 +103,29 @@ export const DocumentRequirements = () => {
           "data",
         ]);
         if (Array.isArray(list)) {
+          const mapped = list.map((doc: any) => ({
+            id: doc.id,
+            name: doc.documentName || doc.name || "",
+            description: doc.description || "",
+            types: normalizeUserTypes(doc.userTypes || doc.types),
+            limits: doc.maxFileSize
+              ? `Max: ${doc.maxFileSize}`
+              : doc.limits || "Max: 5MB",
+            formats: doc.allowedFormats || doc.formats || "JPG, PNG, PDF",
+          }));
+
           setDocumentTypes(
-            list.map((doc: any) => ({
-              id: doc.id,
-              name: doc.documentName || doc.name || "",
-              description: doc.description || "",
-              types: doc.userTypes || doc.types || [],
-              limits: doc.maxFileSize
-                ? `Max: ${doc.maxFileSize}`
-                : doc.limits || "Max: 5MB",
-              formats: doc.allowedFormats || doc.formats || "JPG, PNG, PDF",
-            })),
+            mapped.length > 0 ? mapped : FALLBACK_DOCUMENT_TYPES,
           );
         } else {
-          setDocumentTypes([]);
+          setDocumentTypes(FALLBACK_DOCUMENT_TYPES);
         }
+      } else {
+        setDocumentTypes(FALLBACK_DOCUMENT_TYPES);
       }
     } catch (e) {
       console.error("Failed to load document requirements", e);
-      setDocumentTypes([]);
+      setDocumentTypes(FALLBACK_DOCUMENT_TYPES);
     }
     setLoading(false);
   };
@@ -282,7 +357,7 @@ export const DocumentRequirements = () => {
             overflow: hidden;
         }
 
-        .vp-modal-header {
+        .vp-doc-modal-header {
             padding: 2rem 2.5rem;
             border-bottom: 1px solid #f1f5f9;
             display: flex;
@@ -290,7 +365,7 @@ export const DocumentRequirements = () => {
             align-items: center;
         }
 
-        .vp-modal-header h3 {
+        .vp-doc-modal-header h3 {
             font-size: 1.5rem;
             font-weight: 900;
             margin: 0;
@@ -310,7 +385,7 @@ export const DocumentRequirements = () => {
             color: #64748b;
         }
 
-        .vp-modal-body {
+        .vp-doc-modal-body {
             padding: 2.5rem;
             display: flex;
             flex-direction: column;
@@ -367,7 +442,7 @@ export const DocumentRequirements = () => {
              background: white;
         }
 
-        .vp-modal-footer {
+        .vp-doc-modal-footer {
             padding: 1.5rem 2.5rem 2.5rem 2.5rem;
             border-top: 1px solid #f1f5f9;
             display: flex;
@@ -498,7 +573,7 @@ export const DocumentRequirements = () => {
           onClick={() => setIsModalOpen(false)}
         >
           <div className="vp-doc-modal" onClick={(e) => e.stopPropagation()}>
-            <div className="vp-modal-header">
+            <div className="vp-doc-modal-header">
               <h3>
                 {modalMode === "view" ? "Document Details" : "Edit Requirement"}
               </h3>
@@ -510,7 +585,7 @@ export const DocumentRequirements = () => {
               </button>
             </div>
 
-            <div className="vp-modal-body">
+            <div className="vp-doc-modal-body">
               {modalMode === "view" ? (
                 <>
                   <div className="vp-info-block">
@@ -565,7 +640,7 @@ export const DocumentRequirements = () => {
               )}
             </div>
 
-            <div className="vp-modal-footer">
+            <div className="vp-doc-modal-footer">
               <button
                 className="vp-modal-btn cancel"
                 onClick={() => setIsModalOpen(false)}

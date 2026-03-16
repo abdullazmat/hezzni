@@ -199,7 +199,7 @@ export const VerificationBadges = () => {
   const [userTypeFilter, setUserTypeFilter] = useState("All");
   const [cityFilter, setCityFilter] = useState("All");
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeStat, setActiveStat] = useState<string | null>(null);
+  const [activeStat, setActiveStat] = useState<string | null>("TotalUsers");
 
   // Modal States
   const [showSettingsModal, setShowSettingsModal] = useState(false);
@@ -572,21 +572,25 @@ export const VerificationBadges = () => {
       {/* Stats Cards */}
       <div className="vb-stats-grid">
         <div
-          onClick={() => setActiveStat(null)} // Reset
+          onClick={() => handleStatClick("TotalUsers")}
           style={{
             padding: "1.25rem",
             borderRadius: "1.5rem",
-            backgroundColor: !activeStat ? "#eef7f0" : "white",
+            backgroundColor: activeStat === "TotalUsers" ? "#38AC57" : "white",
+            color: activeStat === "TotalUsers" ? "white" : "black",
             position: "relative",
-            boxShadow: !activeStat
-              ? "inset 0 0 0 2px #38AC57"
-              : "0 1px 3px rgba(0,0,0,0.05)",
+            boxShadow:
+              activeStat === "TotalUsers"
+                ? "0 10px 15px -3px rgba(56, 172, 87, 0.4)"
+                : "0 1px 3px rgba(0,0,0,0.05)",
             display: "flex",
             flexDirection: "column",
             justifyContent: "space-between",
             minHeight: "140px",
             cursor: "pointer",
             transition: "all 0.2s",
+            transform:
+              activeStat === "TotalUsers" ? "translateY(-2px)" : "none",
           }}
         >
           <div
@@ -615,10 +619,11 @@ export const VerificationBadges = () => {
               position: "absolute",
               bottom: "1rem",
               right: "1rem",
-              backgroundColor: "#38AC57",
+              backgroundColor:
+                activeStat === "TotalUsers" ? "white" : "#38AC57",
               borderRadius: "50%",
               padding: "0.4rem",
-              color: "white",
+              color: activeStat === "TotalUsers" ? "#38AC57" : "white",
               display: "flex",
             }}
           >

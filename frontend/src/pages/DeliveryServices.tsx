@@ -760,7 +760,7 @@ export const DeliveryServices = () => {
         </div>
         <Dropdown
           label="Status"
-          options={["Pending", "Accepted", "Scheduled", "Cancelled"]}
+          options={["Pending", "Accepted", "Scheduled", "Completed", "Cancelled"]}
           activeValue={statusFilter}
           onSelect={setStatusFilter}
         />

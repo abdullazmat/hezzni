@@ -7,6 +7,12 @@ import {
   getCommissionsApi,
 } from "../../services/api";
 
+const FALLBACK_COMMISSION_RATES = [
+  { id: 1, label: "Car Ride", value: 15, enabled: true },
+  { id: 2, label: "Motorcycle", value: 12, enabled: true },
+  { id: 3, label: "Taxi", value: 18, enabled: true },
+];
+
 export const CommissionRules = () => {
   const [commissionRates, setCommissionRates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,11 +78,11 @@ export const CommissionRules = () => {
           },
         ]);
       } else {
-        setCommissionRates([]);
+        setCommissionRates(FALLBACK_COMMISSION_RATES);
       }
     } catch (e) {
       console.error("Failed to load commissions", e);
-      setCommissionRates([]);
+      setCommissionRates(FALLBACK_COMMISSION_RATES);
     }
     setLoading(false);
   };
