@@ -275,7 +275,11 @@ export const Notifications = () => {
       return todayItems;
     }
 
-    if (activeTab === "External" && searchQuery.trim() === "" && !targetFilter) {
+    if (
+      activeTab === "External" &&
+      searchQuery.trim() === "" &&
+      !targetFilter
+    ) {
       return FALLBACK_EXTERNAL_NOTIFICATIONS.filter((n) =>
         isTodayNotificationTimestamp(n.timestamp),
       );
@@ -293,7 +297,11 @@ export const Notifications = () => {
       return yesterdayItems;
     }
 
-    if (activeTab === "External" && searchQuery.trim() === "" && !targetFilter) {
+    if (
+      activeTab === "External" &&
+      searchQuery.trim() === "" &&
+      !targetFilter
+    ) {
       return FALLBACK_EXTERNAL_NOTIFICATIONS.filter((n) =>
         isYesterdayNotificationTimestamp(n.timestamp),
       );
@@ -1046,81 +1054,81 @@ export const Notifications = () => {
                       </div>
                     ))
                   : externalTodayNotifications.map((notif) => (
+                      <div
+                        key={notif.id}
+                        onClick={() => {
+                          setSelectedNotification(notif);
+                          setIsDetailsModalOpen(true);
+                        }}
+                        className="not-card"
+                      >
                         <div
-                          key={notif.id}
-                          onClick={() => {
-                            setSelectedNotification(notif);
-                            setIsDetailsModalOpen(true);
+                          style={{
+                            width: "52px",
+                            height: "52px",
+                            borderRadius: "16px",
+                            backgroundColor: getIconBg(),
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            boxShadow: "0 4px 10px rgba(56, 172, 87, 0.1)",
                           }}
-                          className="not-card"
                         >
+                          {getIcon(notif.category)}
+                        </div>
+                        <div style={{ flex: 1 }}>
                           <div
                             style={{
-                              width: "52px",
-                              height: "52px",
-                              borderRadius: "16px",
-                              backgroundColor: getIconBg(),
                               display: "flex",
                               alignItems: "center",
-                              justifyContent: "center",
-                              flexShrink: 0,
-                              boxShadow: "0 4px 10px rgba(56, 172, 87, 0.1)",
+                              gap: "10px",
+                              flexWrap: "wrap",
                             }}
                           >
-                            {getIcon(notif.category)}
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div
+                            <span
                               style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "10px",
-                                flexWrap: "wrap",
+                                fontWeight: "900",
+                                fontSize: "1.15rem",
+                                color: "#111827",
                               }}
                             >
-                              <span
-                                style={{
-                                  fontWeight: "900",
-                                  fontSize: "1.15rem",
-                                  color: "#111827",
-                                }}
-                              >
-                                {notif.title}
-                              </span>
-                              <span
-                                style={{
-                                  color: "#38AC57",
-                                  fontSize: "0.85rem",
-                                  fontWeight: "800",
-                                }}
-                              >
-                                {notif.timestamp}
-                              </span>
-                            </div>
-                            <p
+                              {notif.title}
+                            </span>
+                            <span
                               style={{
-                                margin: "0.4rem 0 0 0",
-                                color: "#6B7280",
-                                fontSize: "1rem",
-                                fontWeight: "600",
-                                lineHeight: "1.5",
+                                color: "#38AC57",
+                                fontSize: "0.85rem",
+                                fontWeight: "800",
                               }}
                             >
-                              {notif.message}
-                            </p>
+                              {notif.timestamp}
+                            </span>
                           </div>
-                          <div
-                            className="not-card-status"
+                          <p
                             style={{
-                              width: "12px",
-                              height: "12px",
-                              borderRadius: "50%",
-                              backgroundColor: "#38AC57",
-                              flexShrink: 0,
+                              margin: "0.4rem 0 0 0",
+                              color: "#6B7280",
+                              fontSize: "1rem",
+                              fontWeight: "600",
+                              lineHeight: "1.5",
                             }}
-                          ></div>
+                          >
+                            {notif.message}
+                          </p>
                         </div>
-                      ))}
+                        <div
+                          className="not-card-status"
+                          style={{
+                            width: "12px",
+                            height: "12px",
+                            borderRadius: "50%",
+                            backgroundColor: "#38AC57",
+                            flexShrink: 0,
+                          }}
+                        ></div>
+                      </div>
+                    ))}
               </div>
             </div>
 
@@ -1188,81 +1196,81 @@ export const Notifications = () => {
                       </div>
                     ))
                   : externalYesterdayNotifications.map((notif) => (
+                      <div
+                        key={notif.id}
+                        onClick={() => {
+                          setSelectedNotification(notif);
+                          setIsDetailsModalOpen(true);
+                        }}
+                        className="not-card"
+                      >
                         <div
-                          key={notif.id}
-                          onClick={() => {
-                            setSelectedNotification(notif);
-                            setIsDetailsModalOpen(true);
+                          style={{
+                            width: "52px",
+                            height: "52px",
+                            borderRadius: "16px",
+                            backgroundColor: getIconBg(),
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            boxShadow: "0 4px 10px rgba(9, 10, 10, 0.05)",
                           }}
-                          className="not-card"
                         >
+                          {getIcon(notif.category)}
+                        </div>
+                        <div style={{ flex: 1 }}>
                           <div
                             style={{
-                              width: "52px",
-                              height: "52px",
-                              borderRadius: "16px",
-                              backgroundColor: getIconBg(),
                               display: "flex",
                               alignItems: "center",
-                              justifyContent: "center",
-                              flexShrink: 0,
-                              boxShadow: "0 4px 10px rgba(9, 10, 10, 0.05)",
+                              gap: "10px",
+                              flexWrap: "wrap",
                             }}
                           >
-                            {getIcon(notif.category)}
-                          </div>
-                          <div style={{ flex: 1 }}>
-                            <div
+                            <span
                               style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "10px",
-                                flexWrap: "wrap",
+                                fontWeight: "900",
+                                fontSize: "1.15rem",
+                                color: "#111827",
                               }}
                             >
-                              <span
-                                style={{
-                                  fontWeight: "900",
-                                  fontSize: "1.15rem",
-                                  color: "#111827",
-                                }}
-                              >
-                                {notif.title}
-                              </span>
-                              <span
-                                style={{
-                                  color: "#6B7280",
-                                  fontSize: "0.85rem",
-                                  fontWeight: "800",
-                                }}
-                              >
-                                {notif.timestamp}
-                              </span>
-                            </div>
-                            <p
+                              {notif.title}
+                            </span>
+                            <span
                               style={{
-                                margin: "0.4rem 0 0 0",
                                 color: "#6B7280",
-                                fontSize: "1rem",
-                                fontWeight: "600",
-                                lineHeight: "1.5",
+                                fontSize: "0.85rem",
+                                fontWeight: "800",
                               }}
                             >
-                              {notif.message}
-                            </p>
+                              {notif.timestamp}
+                            </span>
                           </div>
-                          <div
-                            className="not-card-status"
+                          <p
                             style={{
-                              width: "12px",
-                              height: "12px",
-                              borderRadius: "50%",
-                              backgroundColor: "#38AC57",
-                              flexShrink: 0,
+                              margin: "0.4rem 0 0 0",
+                              color: "#6B7280",
+                              fontSize: "1rem",
+                              fontWeight: "600",
+                              lineHeight: "1.5",
                             }}
-                          ></div>
+                          >
+                            {notif.message}
+                          </p>
                         </div>
-                      ))}
+                        <div
+                          className="not-card-status"
+                          style={{
+                            width: "12px",
+                            height: "12px",
+                            borderRadius: "50%",
+                            backgroundColor: "#38AC57",
+                            flexShrink: 0,
+                          }}
+                        ></div>
+                      </div>
+                    ))}
               </div>
             </div>
           </>

@@ -862,7 +862,10 @@ export const DailyBonus = () => {
         </div>
 
         <div className="vp-form-grid">
-          {(configFields.length > 0 ? configFields : FALLBACK_BONUS_CONFIG_FIELDS).map((field: any, i: number) => (
+          {(configFields.length > 0
+            ? configFields
+            : FALLBACK_BONUS_CONFIG_FIELDS
+          ).map((field: any, i: number) => (
             <div key={i} className="vp-input-group">
               <label>{field.label}</label>
               <input

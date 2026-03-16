@@ -123,8 +123,11 @@ export const FareStructure = () => {
           setPricingData(list.length > 0 ? list : FALLBACK_PRICING);
           // Set active service if not already set
           if (!activeService) {
-            const firstPricing = list.length > 0 ? list[0] : FALLBACK_PRICING[0];
-            setActiveService(firstPricing.serviceName || firstPricing.name || "");
+            const firstPricing =
+              list.length > 0 ? list[0] : FALLBACK_PRICING[0];
+            setActiveService(
+              firstPricing.serviceName || firstPricing.name || "",
+            );
           }
         } else {
           setPricingData(FALLBACK_PRICING);
