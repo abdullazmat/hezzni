@@ -3,7 +3,6 @@ import {
   Plus,
   ArrowUpRight,
   Search,
-  CheckCircle2,
   Filter,
   ChevronDown,
   Eye,
@@ -103,19 +102,32 @@ const FALLBACK_TEAM_MEMBERS: TeamMember[] = [
 ];
 
 function deriveStatsFromMembers(nextMembers: TeamMember[]): TeamStats {
+  const today = new Date().toISOString().split("T")[0];
   const totalMembers = nextMembers.length;
+  
   const active = nextMembers.filter(
     (member) => member.status === "Available",
   ).length;
-  const admins = nextMembers.filter((member) =>
-    member.role.toLowerCase().includes("admin"),
-  ).length;
+  
+  const admins = nextMembers.filter((member) => {
+    const role = member.role.toLowerCase();
+    return (
+      role.includes("admin") ||
+      role.includes("manager") ||
+      role.includes("moderator")
+    );
+  }).length;
+
+  const onlineTodayCount = nextMembers.filter((member) => {
+    if (!member.last_login) return false;
+    return member.last_login.startsWith(today);
+  }).length;
 
   return {
     totalMembers,
     active,
     admins,
-    onlineToday: active,
+    onlineToday: onlineTodayCount,
   };
 }
 
@@ -220,6 +232,35 @@ export const TeamManagement = () => {
   });
   const [loading, setLoading] = useState(true);
 
+  // Authentication & Permissions
+  const currentUser = JSON.parse(localStorage.getItem("user") || "{}");
+  const currentUserId = currentUser.id;
+  const currentUserRole = (currentUser.role || "").toLowerCase();
+  const isAdmin = currentUserRole === "admin" || currentUserRole === "super admin";
+  const isSuperAdmin = currentUserId === 0;
+
+  const canAdd = isSuperAdmin || isAdmin;
+  const canModify = (targetId: number, targetRole: string) => {
+    if (isSuperAdmin) return true;
+    if (targetId === currentUserId) return true;
+    if (isAdmin) {
+      const role = targetRole.toLowerCase();
+      // Admin cannot edit Super Admin or other Admins
+      return role !== "super admin" && role !== "admin";
+    }
+    return false;
+  };
+  const canDelete = (targetId: number, targetRole: string) => {
+    if (targetId === currentUserId) return false;
+    if (isSuperAdmin) return true;
+    if (isAdmin) {
+      const role = targetRole.toLowerCase();
+      // Admin cannot delete Super Admin or other Admins
+      return role !== "super admin" && role !== "admin";
+    }
+    return false;
+  };
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<"add" | "edit" | "view">("view");
   const [selectedMember, setSelectedMember] = useState<TeamMember | null>(null);
@@ -253,24 +294,13 @@ export const TeamManagement = () => {
           TEAM_MEMBER_KEYS,
         )
           .map(normalizeTeamMember)
-          .filter((member) => member.id > 0);
+          .filter((member) => member.id >= 0);
         resolvedMembers =
           nextMembers.length > 0 ? nextMembers : FALLBACK_TEAM_MEMBERS;
-
-        const stored = loadStoredMembers();
-        if (stored && stored.length > 0) {
-          const merged = resolvedMembers.map((member) => {
-            const override = stored.find((item) => item.id === member.id);
-            return override ? { ...member, ...override } : member;
-          });
-          const localOnly = stored.filter(
-            (storedMember) =>
-              !resolvedMembers.some((member) => member.id === storedMember.id),
-          );
-          resolvedMembers = [...localOnly, ...merged];
-        }
-
+        
         setMembers(resolvedMembers);
+        // We still save to stored members for offline viewing if needed, 
+        // but we don't merge on next load to avoid discrepancies.
         saveStoredMembers(resolvedMembers);
       } else {
         const stored = loadStoredMembers();
@@ -279,19 +309,10 @@ export const TeamManagement = () => {
         setMembers(resolvedMembers);
       }
 
-      if (statsRes.ok) {
-        const nextStats = normalizeTeamStats(statsRes.data);
-        setStats(
-          nextStats.totalMembers > 0 ||
-            nextStats.active > 0 ||
-            nextStats.admins > 0 ||
-            nextStats.onlineToday > 0
-            ? nextStats
-            : deriveStatsFromMembers(resolvedMembers),
-        );
-      } else {
-        setStats(deriveStatsFromMembers(resolvedMembers));
-      }
+      // To ensure stats ALWAYS match the list shown, we derive them from the members array.
+      // This solves the discrepancy where API stats and the list (which might have fallbacks) differ.
+      setStats(deriveStatsFromMembers(resolvedMembers));
+
     } catch (err) {
       console.error("Failed to fetch team data", err);
       const stored = loadStoredMembers();
@@ -344,12 +365,27 @@ export const TeamManagement = () => {
       member.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       member.email.toLowerCase().includes(searchTerm.toLowerCase());
 
-    if (activeFilter === "Active")
-      return matchesSearch && member.status === "Available";
-    if (activeFilter === "Admins")
-      return matchesSearch && member.role.toLowerCase().includes("admin");
-    if (activeFilter === "Online Today") return matchesSearch;
-    return matchesSearch;
+    if (!matchesSearch) return false;
+
+    if (activeFilter === "Active") {
+      return member.status === "Available";
+    }
+
+    if (activeFilter === "Admins") {
+      const role = member.role.toLowerCase();
+      return (
+        role.includes("admin") ||
+        role.includes("manager") ||
+        role.includes("moderator")
+      );
+    }
+
+    if (activeFilter === "Online Today") {
+      const today = new Date().toISOString().split("T")[0];
+      return !!member.last_login && member.last_login.startsWith(today);
+    }
+
+    return true;
   });
 
   const handleAddClick = () => {
@@ -359,7 +395,7 @@ export const TeamManagement = () => {
       email: "",
       password: "",
       employeeId: "",
-      role: "Admin",
+      role: isSuperAdmin ? "Admin" : "Operator",
       status: "Available",
       department: "Operations",
       jobTitle: "",
@@ -473,6 +509,7 @@ export const TeamManagement = () => {
           department: formData.department,
           jobTitle: formData.jobTitle,
           city: formData.city,
+          password: formData.password || undefined,
         });
         if (res.ok) {
           await fetchData();
@@ -1190,10 +1227,12 @@ export const TeamManagement = () => {
           )}
         </div>
 
-        <button className="vp-add-btn" onClick={handleAddClick}>
-          <Plus size={22} />
-          Add Team Member
-        </button>
+        {canAdd && (
+          <button className="vp-add-btn" onClick={handleAddClick}>
+            <Plus size={22} />
+            Add Team Member
+          </button>
+        )}
       </div>
 
       {/* Members Table */}
@@ -1208,10 +1247,10 @@ export const TeamManagement = () => {
             <thead>
               <tr>
                 <th>Member</th>
+                <th>Role</th>
                 <th>Department</th>
                 <th>Status</th>
-                <th>2FA</th>
-                <th>Last Login</th>
+                <th>Activity</th>
                 <th>Actions</th>
               </tr>
             </thead>
@@ -1239,8 +1278,13 @@ export const TeamManagement = () => {
                       </div>
                     </td>
                     <td>
+                      <span className="vp-badge role" style={{ background: "#eff6ff", color: "#1d4ed8" }}>
+                        {member.role}
+                      </span>
+                    </td>
+                    <td>
                       <span className="vp-badge dept">
-                        {member.department || member.role}
+                        {member.department || "N/A"}
                       </span>
                     </td>
                     <td>
@@ -1251,28 +1295,16 @@ export const TeamManagement = () => {
                       </span>
                     </td>
                     <td>
-                      {member.last_login && !member.last_logout ? (
-                        <CheckCircle2
-                          size={24}
-                          color="#38AC57"
-                          fill="#f0fdf4"
-                        />
-                      ) : (
-                        <span
-                          style={{
-                            color: "#94a3b8",
-                            fontWeight: "800",
-                            fontSize: "0.85rem",
-                          }}
-                        >
-                          DISABLED
+                      <div style={{ display: "flex", flexDirection: "column", gap: "0.25rem" }}>
+                        <span className="vp-last-login">
+                          {formatLastSeen(member.last_login)}
                         </span>
-                      )}
-                    </td>
-                    <td>
-                      <span className="vp-last-login">
-                        {formatLastSeen(member.last_login)}
-                      </span>
+                        {member.last_login && !member.last_logout && (
+                          <span style={{ fontSize: "0.75rem", color: "#38AC57", fontWeight: "700", marginLeft: "0.5rem" }}>
+                            • Active
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td>
                       <div className="vp-action-btn-group">
@@ -1282,19 +1314,23 @@ export const TeamManagement = () => {
                         >
                           <Eye size={16} />
                         </button>
-                        <button
-                          className="vp-filter-btn"
-                          onClick={() => handleEditClick(member)}
-                        >
-                          <Edit2 size={16} />
-                        </button>
-                        <button
-                          className="vp-filter-btn"
-                          style={{ borderColor: "#fee2e2", color: "#ef4444" }}
-                          onClick={() => handleDelete(member.id, member.name)}
-                        >
-                          <Trash2 size={16} />
-                        </button>
+                        {canModify(member.id, member.role) && (
+                          <button
+                            className="vp-filter-btn"
+                            onClick={() => handleEditClick(member)}
+                          >
+                            <Edit2 size={16} />
+                          </button>
+                        )}
+                        {canDelete(member.id, member.role) && (
+                          <button
+                            className="vp-filter-btn"
+                            style={{ borderColor: "#fee2e2", color: "#ef4444" }}
+                            onClick={() => handleDelete(member.id, member.name)}
+                          >
+                            <Trash2 size={16} />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1435,16 +1471,17 @@ export const TeamManagement = () => {
                       />
                     </div>
                   )}
-                  {modalMode === "add" && (
+                  {(modalMode === "add" || modalMode === "edit") && (
                     <div className="input-group">
-                      <label>Password</label>
+                      <label>{modalMode === "add" ? "Password" : "New Password (Optional)"}</label>
                       <input
                         type="password"
+                        placeholder={modalMode === "edit" ? "Leave blank to keep current" : ""}
                         value={formData.password}
                         onChange={(e) =>
                           setFormData({ ...formData, password: e.target.value })
                         }
-                        required
+                        required={modalMode === "add"}
                       />
                     </div>
                   )}
@@ -1456,10 +1493,11 @@ export const TeamManagement = () => {
                         setFormData({ ...formData, role: e.target.value })
                       }
                     >
-                      <option value="Admin">Admin</option>
-                      <option value="Moderator">Moderator</option>
-                      <option value="Developer">Developer</option>
+                      {isSuperAdmin && <option value="Admin">Admin</option>}
+                      <option value="Operator">Operator</option>
                       <option value="Manager">Manager</option>
+                      <option value="Developer">Developer</option>
+                      <option value="Moderator">Moderator</option>
                     </select>
                   </div>
                   {modalMode === "edit" && (

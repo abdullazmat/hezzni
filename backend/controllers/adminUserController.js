@@ -3,16 +3,30 @@ const db = require('../config/db');
 // GET /api/admin/user/profile
 exports.getProfile = async (req, res) => {
   const adminId = req.user.id;
+
+  // Handle Super Admin (ID 0)
+  if (adminId === 0) {
+    return res.status(200).json({
+      id: 0,
+      name: process.env.ADMIN_NAME || "Super Admin",
+      email: process.env.ADMIN_EMAIL,
+      role: "Admin",
+      status: "Available",
+      avatar: null,
+    });
+  }
+
   try {
     const [rows] = await db.pool.execute(
-      'SELECT id, name, email, status, avatar, role FROM admins WHERE id = ?',
-      [adminId]
+      "SELECT id, name, email, status, avatar, role FROM admins WHERE id = ?",
+      [adminId],
     );
-    if (rows.length === 0) return res.status(404).json({ message: 'User not found' });
+    if (rows.length === 0)
+      return res.status(404).json({ message: "User not found" });
     res.status(200).json(rows[0]);
   } catch (err) {
     console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ message: "Server error" });
   }
 };
 

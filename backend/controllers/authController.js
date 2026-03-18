@@ -12,28 +12,72 @@ exports.login = async (req, res) => {
   const submittedEmail = String(email).trim().toLowerCase();
   const submittedPassword = String(password);
 
-  // Login verification is intentionally env-only.
-  const adminEmail = String(process.env.ADMIN_EMAIL || "")
-    .trim()
-    .toLowerCase();
-  const adminPassword = String(process.env.ADMIN_PASSWORD || "");
-
-  if (!adminEmail || !adminPassword) {
-    return res.status(500).json({
-      message: "Admin credentials are not configured in environment variables",
-    });
-  }
-
-  if (submittedEmail !== adminEmail || submittedPassword !== adminPassword) {
-    return res.status(401).json({ message: "Invalid credentials" });
-  }
-
   try {
+    let user = null;
+
+    // 1. Check if this is the Super Admin (controlled by ENV variables ONLY)
+    const superAdminEmail = String(process.env.ADMIN_EMAIL || "")
+      .trim()
+      .toLowerCase();
+    const superAdminPassword = String(process.env.ADMIN_PASSWORD || "");
+
+    if (
+      superAdminEmail &&
+      submittedEmail === superAdminEmail &&
+      submittedPassword === superAdminPassword
+    ) {
+      user = {
+        id: 0, // Specialized ID for Super Admin
+        email: superAdminEmail,
+        name: process.env.ADMIN_NAME || "Super Admin",
+        role: "Super Admin",
+        status: "Available",
+      };
+      console.log("Super Admin logged in via ENV");
+    }
+
+    // 2. If not Super Admin, check the database for other roles
+    if (!user) {
+      const [rows] = await db.pool.execute(
+        "SELECT * FROM admins WHERE email = ?",
+        [submittedEmail],
+      );
+
+      if (rows.length > 0) {
+        const dbUser = rows[0];
+        const isMatch = await bcrypt.compare(submittedPassword, dbUser.password);
+        if (isMatch) {
+          user = dbUser;
+          console.log(`User ${user.email} logged in via DB`);
+        }
+      }
+    }
+
+    if (!user) {
+      return res.status(401).json({ message: "Invalid credentials" });
+    }
+
+    // 3. Check status (only applicable if user came from DB)
+    if (user.status && user.status === "Inactive") {
+      return res.status(403).json({ message: "Your account is inactive" });
+    }
+
+    // 4. Record login in history
+    try {
+      await db.pool.execute(
+        "INSERT INTO admin_login_history (admin_id, ip_address, device) VALUES (?, ?, ?)",
+        [user.id, req.ip || null, req.headers["user-agent"] || null],
+      );
+    } catch (historyErr) {
+      console.error("Failed to record login history:", historyErr.message);
+    }
+
     const token = jwt.sign(
       {
-        id: 1,
-        email: adminEmail,
-        name: process.env.ADMIN_NAME || "Admin",
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        role: user.role || "Admin",
       },
       process.env.JWT_SECRET,
       { expiresIn: "1d" },
@@ -43,9 +87,12 @@ exports.login = async (req, res) => {
       message: "Login successful",
       token,
       user: {
-        id: 1,
-        name: process.env.ADMIN_NAME || "Admin",
-        email: adminEmail,
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        role: user.role,
+        status: user.status,
+        avatar: user.avatar || null,
       },
     });
   } catch (err) {

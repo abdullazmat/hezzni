@@ -700,6 +700,7 @@ export interface UpdateTeamMemberRequest {
   department?: string;
   jobTitle?: string;
   city?: string;
+  password?: string;
 }
 
 export async function getAdminProfileApi(): Promise<ApiResponse<AdminProfile>> {
