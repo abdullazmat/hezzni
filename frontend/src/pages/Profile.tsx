@@ -718,6 +718,7 @@ const EditProfileForm = ({
 }) => {
   const [showToast, setShowToast] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [empDetails, setEmpDetails] = useState<EmploymentDetails | null>(null);
   const [empLoading, setEmpLoading] = useState(true);
   const [formData, setFormData] = useState({
@@ -747,6 +748,7 @@ const EditProfileForm = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setErrorMessage(null);
     try {
       // Update basic profile
       const profileFormData = new FormData();
@@ -756,12 +758,12 @@ const EditProfileForm = ({
 
       const pResponse = await updateProfileApi(profileFormData);
 
-      // Update employment details
-      if (empDetails) {
-        await updateEmploymentDetailsApi(empDetails);
-      }
-
       if (pResponse.ok) {
+        // Update employment details
+        if (empDetails) {
+          await updateEmploymentDetailsApi(empDetails);
+        }
+
         // Update local storage with new profile info
         const updatedUser = { ...initialProfile, ...formData };
         localStorage.setItem("user", JSON.stringify(updatedUser));
@@ -770,9 +772,13 @@ const EditProfileForm = ({
         setShowToast(true);
         onUpdate();
         setTimeout(() => setShowToast(false), 3000);
+      } else {
+        const msg = (pResponse.data as any)?.message || "Failed to update profile";
+        setErrorMessage(msg);
       }
     } catch (err) {
       console.error("Failed to update profile", err);
+      setErrorMessage("A network error occurred. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -833,6 +839,23 @@ const EditProfileForm = ({
           gap: "1.75rem 2.5rem",
         }}
       >
+        {errorMessage && (
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              backgroundColor: "#fef2f2",
+              border: "1px solid #fecaca",
+              borderRadius: "0.75rem",
+              padding: "1rem",
+              color: "#dc2626",
+              fontSize: "0.875rem",
+              fontWeight: "600",
+              marginBottom: "0.5rem",
+            }}
+          >
+            {errorMessage}
+          </div>
+        )}
         {/* Full Name */}
         <div>
           <label

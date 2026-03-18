@@ -20,7 +20,6 @@ import {
   addTeamMemberApi,
   resolveApiAssetUrl,
   resolveApiUrl,
-  unwrapApiPayload,
   updateTeamMemberApi,
   deleteTeamMemberApi,
 } from "../../services/api";
@@ -167,17 +166,7 @@ function normalizeTeamMember(value: unknown): TeamMember {
   };
 }
 
-function normalizeTeamStats(value: unknown): TeamStats {
-  const stats = (unwrapApiPayload<Record<string, unknown>>(value) ??
-    {}) as Record<string, unknown>;
 
-  return {
-    totalMembers: Number(stats.totalMembers ?? 0),
-    active: Number(stats.active ?? 0),
-    admins: Number(stats.admins ?? 0),
-    onlineToday: Number(stats.onlineToday ?? 0),
-  };
-}
 
 function getAvatarSrc(avatar: string | null | undefined): string {
   const avatarPath = avatar?.trim();
@@ -281,7 +270,7 @@ export const TeamManagement = () => {
 
   const fetchData = useCallback(async () => {
     try {
-      const [membersRes, statsRes] = await Promise.all([
+      const [membersRes] = await Promise.all([
         getTeamMembersApi(),
         getTeamStatsApi(),
       ]);
@@ -476,11 +465,9 @@ export const TeamManagement = () => {
           success = true;
           showToast("Team member added", "success");
         } else {
-          const errorMessage =
-            (res.data as any).message || "Failed to add member";
+          const errorMessage = (res.data as any).message || "Failed to add member";
           setModalError(errorMessage);
-          success = true;
-          showToast("Team member saved locally", "info");
+          showToast(errorMessage, "error");
         }
       } else if (modalMode === "edit" && selectedMember) {
         const optimistic = members.map((member) =>
@@ -516,11 +503,9 @@ export const TeamManagement = () => {
           success = true;
           showToast("Team member updated", "success");
         } else {
-          const errorMessage =
-            (res.data as any).message || "Failed to update member";
+          const errorMessage = (res.data as any).message || "Failed to update member";
           setModalError(errorMessage);
-          success = true;
-          showToast("Team member saved locally", "info");
+          showToast(errorMessage, "error");
         }
       }
     } catch (err) {

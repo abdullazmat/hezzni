@@ -149,13 +149,16 @@ exports.addTeamMember = async (req, res) => {
         .json({ message: "Name, email and password are required" });
     }
 
-    // Check duplicate email
+    // Check duplicate email or name
     const [existing] = await db.pool.execute(
-      "SELECT id FROM admins WHERE email = ?",
-      [email],
+      "SELECT id, email, name FROM admins WHERE email = ? OR name = ?",
+      [email, name],
     );
     if (existing.length > 0) {
-      return res.status(400).json({ message: "Email already exists" });
+      if (existing.some((r) => r.email === email)) {
+        return res.status(400).json({ message: "Email already exists" });
+      }
+      return res.status(400).json({ message: "Name/Username already exists" });
     }
 
     const normalizedRole = normalizeAdminRole(role);
@@ -189,6 +192,12 @@ exports.addTeamMember = async (req, res) => {
 
     res.status(201).json({ message: "Team member added successfully" });
   } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") {
+      const msg = err.sqlMessage.includes("email")
+        ? "Email already exists"
+        : "Name/Username already exists";
+      return res.status(400).json({ message: msg });
+    }
     console.error(err);
     res.status(500).json({ message: "Server error" });
   }
@@ -256,6 +265,26 @@ exports.updateTeamMember = async (req, res) => {
     const updates = [];
     const params = [];
 
+    // Uniqueness checks for email and name
+    if (email !== undefined) { // Changed from `if (email)` to `if (email !== undefined)` for consistency
+      const [existingEmail] = await db.pool.execute(
+        "SELECT id FROM admins WHERE email = ? AND id != ?",
+        [email, id],
+      );
+      if (existingEmail.length > 0) {
+        return res.status(400).json({ message: "Email already exists" });
+      }
+    }
+    if (name !== undefined) { // Changed from `if (name)` to `if (name !== undefined)` for consistency
+      const [existingName] = await db.pool.execute(
+        "SELECT id FROM admins WHERE name = ? AND id != ?",
+        [name, id],
+      );
+      if (existingName.length > 0) {
+        return res.status(400).json({ message: "Name/Username already exists" });
+      }
+    }
+
     if (name !== undefined) {
       updates.push("name = ?");
       params.push(name);
@@ -313,9 +342,14 @@ exports.updateTeamMember = async (req, res) => {
       `UPDATE admins SET ${updates.join(", ")} WHERE id = ?`,
       params,
     );
-
     res.status(200).json({ message: "Team member updated successfully" });
   } catch (err) {
+    if (err.code === "ER_DUP_ENTRY") {
+      const msg = err.sqlMessage.includes("email")
+        ? "Email already exists"
+        : "Name/Username already exists";
+      return res.status(400).json({ message: msg });
+    }
     console.error(err);
     res.status(500).json({ message: "Server error" });
   }

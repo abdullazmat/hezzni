@@ -9,9 +9,11 @@ const checkRole = (allowedRoles) => {
     // Convert allowedRoles to array if it's a single string
     const roles = Array.isArray(allowedRoles) ? allowedRoles : [allowedRoles];
     
+    const isSuperAdmin = role.toLowerCase() === "super admin";
+    
     // Check if the user's role is in the allowedRoles list
-    // We do a case-insensitive check to be safe
-    const isAllowed = roles.some(
+    // We do a case-insensitive check and allow Super Admin to bypass
+    const isAllowed = isSuperAdmin || roles.some(
       (r) => r.toLowerCase() === role.toLowerCase()
     );
 

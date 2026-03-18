@@ -43,8 +43,33 @@ exports.updateProfile = async (req, res) => {
   }
 
   try {
+    // Uniqueness checks
+    if (email) {
+      const [existingEmail] = await db.pool.execute(
+        "SELECT id FROM admins WHERE email = ? AND id != ?",
+        [email, adminId],
+      );
+      if (existingEmail.length > 0) {
+        return res.status(400).json({ message: "Email already exists" });
+      }
+    }
+    if (name) {
+      const [existingName] = await db.pool.execute(
+        "SELECT id FROM admins WHERE name = ? AND id != ?",
+        [name, adminId],
+      );
+      if (existingName.length > 0) {
+        return res.status(400).json({ message: "Name/Username already exists" });
+      }
+    }
+
+    if (adminId === 0) {
+        // Super Admin is virtual, update succeeds but doesn't touch DB
+        return res.status(200).json({ message: 'Profile updated successfully' });
+    }
+
     let query = 'UPDATE admins SET name = ?, email = ?, role = ?';
-    let params = [name, email, role];
+    let params = [name || "", email || "", role || "Admin"];
 
     if (avatar) {
       query += ', avatar = ?';
@@ -57,8 +82,14 @@ exports.updateProfile = async (req, res) => {
     await db.pool.execute(query, params);
     res.status(200).json({ message: 'Profile updated successfully' });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    console.error("UpdateProfile Error:", err);
+    if (err.code === 'ER_DUP_ENTRY') {
+      const msg = err.sqlMessage.includes('email') 
+        ? "Email already exists" 
+        : "Name/Username already exists";
+      return res.status(400).json({ message: msg });
+    }
+    res.status(500).json({ message: 'Server error: ' + err.message });
   }
 };
 
